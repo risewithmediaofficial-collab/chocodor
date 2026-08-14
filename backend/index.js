@@ -32,16 +32,32 @@ const PORT = process.env.PORT || 5000
 app.use(cors())
 app.use(express.json())
 
-// API Routes
+// API Routes (mounted on both /api/* and /* for universal reverse-proxy support)
 app.use('/api/auth', authRoutes)
-app.use('/api/products', productRoutes)
-app.use('/api/orders', orderRoutes)
-app.use('/api/royalty', royaltyRoutes)
+app.use('/auth', authRoutes)
+
 app.use('/api/admin', adminRoutes)
+
+app.use('/api/products', productRoutes)
+app.use('/products', productRoutes)
+
+app.use('/api/orders', orderRoutes)
+app.use('/orders', orderRoutes)
+
+app.use('/api/royalty', royaltyRoutes)
+app.use('/royalty', royaltyRoutes)
+
 app.use('/api/pos', posRoutes)
+app.use('/pos', posRoutes)
+
 app.use('/api/kot', kotRoutes)
+app.use('/kot', kotRoutes)
+
 app.use('/api/settings', settingsRoutes)
+app.use('/settings', settingsRoutes)
+
 app.use('/api/reports', reportsRoutes)
+app.use('/reports', reportsRoutes)
 
 // Root API Welcome & Status Dashboard
 app.get('/', (req, res) => {
