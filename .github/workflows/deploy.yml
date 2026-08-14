@@ -35,8 +35,9 @@ jobs:
             cd /docker/chocodor
             git pull origin main
 
-            # Force rebuild with no cache to pick up latest Dockerfile changes
+            # Rebuild and start all containers (mongodb, backend, frontend)
             docker compose down
-            docker compose up -d --build --no-deps
+            docker compose up -d --build
             docker image prune -f
-            echo "✅ Deployment complete!"
+            echo "✅ Deployment complete! Containers status:"
+            docker compose ps

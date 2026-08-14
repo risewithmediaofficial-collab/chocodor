@@ -1,6 +1,22 @@
 services:
   # ===================================================
-  # Backend API & Database Service
+  # MongoDB Database Service
+  # ===================================================
+  mongodb:
+    image: mongo:7.0
+    container_name: chocodor-mongodb
+    restart: always
+    ports:
+      - "27024:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=chocodor
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - chocodor-network
+
+  # ===================================================
+  # Backend API & SQLite/MongoDB Service
   # ===================================================
   backend:
     build:
@@ -8,12 +24,19 @@ services:
       dockerfile: Dockerfile
     container_name: chocodor-backend
     restart: always
-    env_file:
-      - ./backend/.env
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/chocodor
+      - DATABASE_PATH=./data/chocodor.db
+      - JWT_SECRET=chocodor_super_secret_jwt_key_2026_luxury_indulgence
+      - ADMIN_JWT_SECRET=chocodor_admin_jwt_secret_key_secure_2026
     ports:
       - "5008:5000"
     volumes:
       - ./backend/data:/app/data
+    depends_on:
+      - mongodb
     networks:
       - chocodor-network
 
@@ -36,3 +59,7 @@ services:
 networks:
   chocodor-network:
     driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
