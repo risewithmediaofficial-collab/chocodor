@@ -11,7 +11,7 @@ services:
     env_file:
       - ./backend/.env
     ports:
-      - "5000:5000"
+      - "5008:5000"
     volumes:
       - ./backend/data:/app/data
     networks:
@@ -27,7 +27,7 @@ services:
     container_name: chocodor-frontend
     restart: always
     ports:
-      - "80:80"
+      - "8084:80"
     depends_on:
       - backend
     networks:
