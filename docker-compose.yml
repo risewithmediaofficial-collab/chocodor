@@ -1,0 +1,38 @@
+services:
+  # ===================================================
+  # Backend API & Database Service
+  # ===================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chocodor-backend
+    restart: always
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend/data:/app/data
+    networks:
+      - chocodor-network
+
+  # ===================================================
+  # Frontend Nginx Web Server & Reverse Proxy
+  # ===================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chocodor-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - chocodor-network
+
+networks:
+  chocodor-network:
+    driver: bridge
