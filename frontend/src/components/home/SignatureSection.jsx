@@ -17,10 +17,11 @@ export default function SignatureSection() {
               </div>
               <div className="dose-delight__basket-card">
                 <img
-                  src="/images/chocolate_gift_box.jpg"
-                  alt="Triple Chocolate Waffle"
+                  src="/images/products/Pistachio_+_Biscoff_+_Nutella_Salankatia.jpg"
+                  alt="Pistachio + Biscoff + Nutella Salankatia"
                   className="dose-delight__basket-img"
                   loading="lazy"
+                  decoding="async"
                 />
               </div>
             </div>
