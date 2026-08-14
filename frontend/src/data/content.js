@@ -34,7 +34,7 @@ export const allProducts = [
     price: 359,
     description: 'Signature crispy pastry layered with rich pistachio cream and crushed roasted pistachios.',
     badge: 'Popular',
-    image: '/images/products/Tiramisu.jpg',
+    image: '/images/products/Pistachio_Salankatia.jpg',
   },
   {
     id: 'lalban-2',

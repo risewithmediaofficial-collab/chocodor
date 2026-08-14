@@ -4,12 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ScrollReveal } from '../components/ScrollReveal'
 import { useCart } from '../context/CartContext'
 import { apiRequest } from '../api/client'
-import { formatPrice } from '../data/content'
+import { categories as defaultCategories, allProducts as defaultProducts, formatPrice } from '../data/content'
 
 export default function MenuPage() {
-  const [categories, setCategories] = useState([])
-  const [products, setProducts] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [categories, setCategories] = useState(defaultCategories || [])
+  const [products, setProducts] = useState(defaultProducts || [])
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   const [activeCategory, setActiveCategory] = useState('ALL')
@@ -22,14 +22,15 @@ export default function MenuPage() {
   useEffect(() => {
     async function loadCatalogue() {
       try {
-        setLoading(true)
         const data = await apiRequest('/products')
-        setCategories(data.categories || [])
-        setProducts(data.products || [])
+        if (data && data.products && data.products.length > 0) {
+          setCategories(data.categories || defaultCategories)
+          setProducts(data.products)
+        }
+        setError(null)
       } catch (err) {
-        setError(err.message || 'Failed to load menu catalogue')
-      } finally {
-        setLoading(false)
+        console.warn('API sync notice, using local cached catalogue:', err.message)
+        // Keep default categories and products loaded so user experience is never interrupted
       }
     }
     loadCatalogue()

@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { apiRequest } from '../api/client'
 import { useCart } from '../context/CartContext'
-import { formatPrice } from '../data/content'
+import { allProducts as defaultProducts, formatPrice } from '../data/content'
 import ReviewModal from '../components/ReviewModal'
 
 export default function ProductDetailPage() {
@@ -11,39 +11,39 @@ export default function ProductDetailPage() {
   const navigate = useNavigate()
   const { addToCart } = useCart()
 
-  const [product, setProduct] = useState(null)
-  const [relatedProducts, setRelatedProducts] = useState([])
-  const [loading, setLoading] = useState(true)
+  const fallbackProduct = defaultProducts.find((p) => p.id === id || p.id === `p-${id}` || p.name.toLowerCase().replace(/\s+/g, '-') === id)
+  const [product, setProduct] = useState(fallbackProduct || null)
+  const [relatedProducts, setRelatedProducts] = useState(defaultProducts.slice(0, 4))
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   const [quantity, setQuantity] = useState(1)
-  const [selectedImage, setSelectedImage] = useState('')
+  const [selectedImage, setSelectedImage] = useState(fallbackProduct?.image || '')
   const [addedToast, setAddedToast] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
 
   useEffect(() => {
     async function loadProductData() {
       try {
-        setLoading(true)
         setError(null)
-
         // 1. Fetch current product
         const prodData = await apiRequest(`/products/${id}`)
-        setProduct(prodData)
-        setSelectedImage(prodData.image)
-        setQuantity(1)
-
+        if (prodData && prodData.name) {
+          setProduct(prodData)
+          setSelectedImage(prodData.image)
+        }
         // 2. Fetch catalogue for related recommendations
         const allData = await apiRequest('/products')
-        const allProds = allData.products || []
+        const allProds = allData.products || defaultProducts
         const related = allProds
-          .filter((p) => p.id !== id && (p.categoryId === prodData.categoryId || p.isBestseller))
+          .filter((p) => p.id !== id && (p.categoryId === prodData?.categoryId || p.category === prodData?.category || p.isBestseller))
           .slice(0, 4)
         setRelatedProducts(related)
       } catch (err) {
-        setError(err.message || 'Dessert not found')
-      } finally {
-        setLoading(false)
+        console.warn('Product API notice, using cached product detail:', err.message)
+        if (!fallbackProduct) {
+          setError('Dessert not found')
+        }
       }
     }
 
