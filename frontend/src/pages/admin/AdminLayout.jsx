@@ -1,13 +1,19 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, Navigate } from 'react-router-dom'
 import { useAdminAuth } from '../../context/AdminAuthContext'
 
 export default function AdminLayout() {
-  const { admin, logout } = useAdminAuth()
-  const navigate = useNavigate()
+  const { admin, loading, logout } = useAdminAuth()
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="pulse-indicator" style={{ width: '18px', height: '18px' }} />
+      </div>
+    )
+  }
 
   if (!admin) {
-    navigate('/admin/login')
-    return null
+    return <Navigate to="/admin/login" replace />
   }
 
   const navItems = [
