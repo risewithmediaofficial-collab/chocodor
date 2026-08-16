@@ -144,7 +144,7 @@ export default function AdminReportsPage() {
             </div>
 
             {/* 2. Channel Distribution & Payment Methods Table */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
               
               {/* Sales Channels */}
               <div style={{ background: '#FFFFFF', borderRadius: '16px', border: '1px solid rgba(61,37,30,0.12)', padding: '20px' }}>

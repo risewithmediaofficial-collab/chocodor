@@ -143,7 +143,7 @@ export default function AdminCustomersPage() {
     }
 
     try {
-      await apiRequest(`/admin/customers/${c.id}`, {
+      await apiRequest(`/admin/customers/${c.id || c._id}`, {
         method: 'DELETE',
         isAdmin: true,
       })
@@ -155,7 +155,7 @@ export default function AdminCustomersPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', gap: '14px' }}>
       
       {/* ─── STATIC TOP SECTION ─── */}
       <div style={{ flexShrink: 0 }}>
@@ -182,14 +182,14 @@ export default function AdminCustomersPage() {
         </div>
       </div>
 
-      {/* ─── SCROLLABLE CUSTOMERS TABLE (Inline Scroll Only) ─── */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
+      {/* ─── SCROLLABLE CUSTOMERS TABLE ─── */}
+      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading customers...</div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>No customers found.</div>
         ) : (
-          <table className="admin-table" style={{ margin: 0 }}>
+          <table className="admin-table" style={{ margin: 0, minWidth: '760px' }}>
             <thead style={{ position: 'sticky', top: 0, background: '#FAF6F0', zIndex: 3, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
               <tr>
                 <th>Customer Name</th>

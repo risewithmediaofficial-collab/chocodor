@@ -1,6 +1,6 @@
 import express from 'express'
 import jwt from 'jsonwebtoken'
-import { db } from '../db.js'
+import { Order, OrderItem, Invoice, StoreSetting } from '../models/index.js'
 import {
   createOrder,
   getOrderById,
@@ -27,14 +27,14 @@ function optionalAuth(req, res, next) {
   next()
 }
 
-// Live Server Quote for Cart (Validates server prices, point sum, delivery fee, reward discount, first-order offer)
-router.post('/quote', optionalAuth, (req, res) => {
+// Live Server Quote for Cart
+router.post('/quote', optionalAuth, async (req, res) => {
   try {
     const { items = [], appliedRewardCode, orderType = 'DELIVERY', applyFirstOrderOffer = false } = req.body
     const customerId = req.user ? req.user.id : (req.body.customerId || null)
     const customerMobile = req.body.customerMobile || (req.user ? req.user.mobile : null)
 
-    const quote = calculateOrderQuote({
+    const quote = await calculateOrderQuote({
       items,
       orderType,
       customerId,
@@ -50,7 +50,7 @@ router.post('/quote', optionalAuth, (req, res) => {
 })
 
 // Create Order (Online or Offline)
-router.post('/', optionalAuth, (req, res) => {
+router.post('/', optionalAuth, async (req, res) => {
   try {
     const customerId = req.user ? req.user.id : (req.body.customerId || null)
     const orderData = {
@@ -58,7 +58,7 @@ router.post('/', optionalAuth, (req, res) => {
       customerId,
     }
 
-    const order = createOrder(orderData)
+    const order = await createOrder(orderData)
     res.status(201).json({ success: true, order })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -69,7 +69,7 @@ router.post('/', optionalAuth, (req, res) => {
 router.post('/razorpay-order', optionalAuth, async (req, res) => {
   try {
     const { orderId } = req.body
-    const order = getOrderById(orderId)
+    const order = await getOrderById(orderId)
     if (!order) return res.status(404).json({ error: 'Order not found' })
 
     const rzpOrder = await createRazorpayOrder({
@@ -88,7 +88,7 @@ router.post('/razorpay-order', optionalAuth, async (req, res) => {
 })
 
 // Verify Razorpay Payment Signature
-router.post('/verify-payment', optionalAuth, (req, res) => {
+router.post('/verify-payment', optionalAuth, async (req, res) => {
   try {
     const { orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body
 
@@ -99,14 +99,14 @@ router.post('/verify-payment', optionalAuth, (req, res) => {
     })
 
     if (!isValid) {
-      markPaymentFailed(orderId, 'Cryptographic signature mismatch')
+      await markPaymentFailed(orderId, 'Cryptographic signature mismatch')
       return res.status(400).json({
         success: false,
         error: 'Payment verification failed. Invalid transaction signature.',
       })
     }
 
-    const updatedOrder = updateRazorpayPaymentSuccess(
+    const updatedOrder = await updateRazorpayPaymentSuccess(
       orderId,
       razorpayOrderId,
       razorpayPaymentId,
@@ -124,10 +124,10 @@ router.post('/verify-payment', optionalAuth, (req, res) => {
 })
 
 // Mark Payment as Failed
-router.post('/payment-failed', optionalAuth, (req, res) => {
+router.post('/payment-failed', optionalAuth, async (req, res) => {
   try {
     const { orderId, reason } = req.body
-    const order = markPaymentFailed(orderId, reason || 'Payment cancelled or declined')
+    const order = await markPaymentFailed(orderId, reason || 'Payment cancelled or declined')
     res.json({ success: true, order })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -135,28 +135,36 @@ router.post('/payment-failed', optionalAuth, (req, res) => {
 })
 
 // Get Customer Orders
-router.get('/my-orders', optionalAuth, (req, res) => {
+router.get('/my-orders', optionalAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Please log in to view your orders' })
     }
 
-    const orders = db.prepare(`
-      SELECT * FROM orders 
-      WHERE customer_id = ? 
-      ORDER BY created_at DESC
-    `).all(req.user.id)
+    const orders = await Order.find({ customer_id: req.user.id })
+      .sort({ created_at: -1 })
+      .lean()
 
-    const fullOrders = orders.map((o) => {
-      const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(o.id)
-      const invoice = db.prepare('SELECT * FROM invoices WHERE order_id = ?').get(o.id)
-      return {
-        ...o,
-        delivery_address: o.delivery_address ? JSON.parse(o.delivery_address) : null,
-        items,
-        invoice,
-      }
-    })
+    const orderIds = orders.map((o) => o.id)
+    const items = await OrderItem.find({ order_id: { $in: orderIds } }).lean()
+    const invoices = await Invoice.find({ order_id: { $in: orderIds } }).lean()
+
+    const itemsMap = {}
+    for (const item of items) {
+      if (!itemsMap[item.order_id]) itemsMap[item.order_id] = []
+      itemsMap[item.order_id].push(item)
+    }
+
+    const invMap = {}
+    for (const inv of invoices) {
+      invMap[inv.order_id] = inv
+    }
+
+    const fullOrders = orders.map((o) => ({
+      ...o,
+      items: itemsMap[o.id] || [],
+      invoice: invMap[o.id] || null,
+    }))
 
     res.json({ orders: fullOrders })
   } catch (err) {
@@ -165,27 +173,28 @@ router.get('/my-orders', optionalAuth, (req, res) => {
 })
 
 // Get Printable Invoice Details
-router.get('/invoice/:identifier', (req, res) => {
+router.get('/invoice/:identifier', async (req, res) => {
   try {
     const { identifier } = req.params
-    // Find invoice by invoice_number or order_number or order_id
-    const invoice = db.prepare(`
-      SELECT i.*, o.order_type, o.created_at as order_time, o.notes, o.order_source
-      FROM invoices i
-      JOIN orders o ON i.order_id = o.id
-      WHERE i.invoice_number = ? OR i.order_number = ? OR i.order_id = ?
-    `).get(identifier, identifier, identifier)
+    const invoice = await Invoice.findOne({
+      $or: [{ invoice_number: identifier }, { order_number: identifier }, { order_id: identifier }],
+    }).lean()
 
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
 
-    const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(invoice.order_id)
-    const businessSettings = db.prepare("SELECT value FROM store_settings WHERE key = 'business'").get()
-    const business = businessSettings ? JSON.parse(businessSettings.value) : {}
+    const order = await Order.findOne({ id: invoice.order_id }).lean()
+    const items = await OrderItem.find({ order_id: invoice.order_id }).lean()
+    const businessSetting = await StoreSetting.findOne({ key: 'business' }).lean()
+    const business = businessSetting?.value || {}
 
     res.json({
       invoice: {
         ...invoice,
-        customer_address: invoice.customer_address ? JSON.parse(invoice.customer_address) : null,
+        order_type: order?.order_type || 'DELIVERY',
+        order_time: order?.created_at || invoice.created_at,
+        notes: order?.notes || '',
+        order_source: order?.order_source || 'ONLINE',
+        customer_address: invoice.customer_address,
         items,
       },
       business,
@@ -196,11 +205,11 @@ router.get('/invoice/:identifier', (req, res) => {
 })
 
 // Track order by order number or ID
-router.get('/track/:orderNumber', (req, res) => {
+router.get('/track/:orderNumber', async (req, res) => {
   try {
-    let order = getOrderByNumber(req.params.orderNumber)
+    let order = await getOrderByNumber(req.params.orderNumber)
     if (!order) {
-      order = getOrderById(req.params.orderNumber)
+      order = await getOrderById(req.params.orderNumber)
     }
     if (!order) {
       return res.status(404).json({ error: 'Order not found. Please check your order reference number.' })

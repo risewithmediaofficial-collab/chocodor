@@ -19,8 +19,8 @@ export default function VideoSection() {
             <div className="story__media-frame">
               <div className="story__media-inner">
                 <img
-                  src="/images/chocolatier_kitchen.jpg"
-                  alt="Chocolatier crafting artisan bonbons at Choco D'or"
+                  src="/images/products/Matilda_Cake.jpg"
+                  alt="Choco D'or signature decadent Matilda Chocolate Cake"
                   className="story__video-still"
                   loading="lazy"
                 />

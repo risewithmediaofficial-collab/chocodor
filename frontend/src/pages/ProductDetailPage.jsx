@@ -148,7 +148,7 @@ export default function ProductDetailPage() {
         </AnimatePresence>
 
         {/* Main Product Two-Column Layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '48px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '40px', alignItems: 'start' }}>
           
           {/* Left Column: Image Showcase */}
           <div>

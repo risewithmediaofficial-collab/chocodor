@@ -75,6 +75,34 @@ export default function AdminRewardsPage() {
     }
   }
 
+  const handleDeleteReward = async (reward) => {
+    if (!window.confirm(`Are you sure you want to delete reward template "${reward.name}"?`)) return
+    try {
+      await apiRequest(`/admin/rewards/${reward.id}`, {
+        method: 'DELETE',
+        isAdmin: true,
+      })
+      alert(`✓ Reward "${reward.name}" deleted.`)
+      loadRewards()
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`)
+    }
+  }
+
+  const handleDeleteRedemption = async (red) => {
+    if (!window.confirm(`Are you sure you want to delete redemption coupon "${red.redemption_code}"?`)) return
+    try {
+      await apiRequest(`/admin/rewards/redemptions/${red.id || red.redemption_code}`, {
+        method: 'DELETE',
+        isAdmin: true,
+      })
+      alert(`✓ Redemption coupon "${red.redemption_code}" deleted.`)
+      loadRewards()
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`)
+    }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -97,11 +125,11 @@ export default function AdminRewardsPage() {
         Configured Reward Definitions
       </h3>
 
-      <div style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)', overflow: 'hidden', marginBottom: '40px' }}>
+      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)', marginBottom: '40px' }}>
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center' }}>Loading rewards...</div>
         ) : (
-          <table className="admin-table">
+          <table className="admin-table" style={{ minWidth: '760px' }}>
             <thead>
               <tr>
                 <th>Reward Name</th>
@@ -132,14 +160,25 @@ export default function AdminRewardsPage() {
                     </span>
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn btn--outline btn--sm"
-                      style={{ padding: '4px 8px', fontSize: '11px' }}
-                      onClick={() => toggleRewardActive(r)}
-                    >
-                      {r.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        className="btn btn--outline btn--sm"
+                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                        onClick={() => toggleRewardActive(r)}
+                      >
+                        {r.is_active ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        style={{ padding: '4px 8px', fontSize: '11px', background: '#FDE8E8', color: '#BA1B1B', border: '1px solid rgba(186,27,27,0.2)' }}
+                        onClick={() => handleDeleteReward(r)}
+                        title="Delete reward definition"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -153,11 +192,11 @@ export default function AdminRewardsPage() {
         Customer Coupon Redemptions ({redemptions.length})
       </h3>
 
-      <div style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)', overflow: 'hidden' }}>
+      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {redemptions.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No customer redemptions yet.</div>
         ) : (
-          <table className="admin-table">
+          <table className="admin-table" style={{ minWidth: '760px' }}>
             <thead>
               <tr>
                 <th>Date</th>
@@ -166,6 +205,7 @@ export default function AdminRewardsPage() {
                 <th>Coupon Code</th>
                 <th>Points Spent</th>
                 <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -189,6 +229,17 @@ export default function AdminRewardsPage() {
                     <span style={{ fontSize: '11px', fontWeight: 800, color: red.is_used ? '#BA1B1B' : '#2E6F40' }}>
                       {red.is_used ? 'USED' : 'ACTIVE'}
                     </span>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      style={{ padding: '4px 8px', fontSize: '11px', background: '#FDE8E8', color: '#BA1B1B', border: '1px solid rgba(186,27,27,0.2)' }}
+                      onClick={() => handleDeleteRedemption(red)}
+                      title="Delete coupon redemption"
+                    >
+                      🗑️
+                    </button>
                   </td>
                 </tr>
               ))}

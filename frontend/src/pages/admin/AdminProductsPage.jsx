@@ -3,20 +3,22 @@ import { apiRequest } from '../../api/client'
 import { formatPrice } from '../../data/content'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 
+import { PRODUCTS, CATEGORIES } from '../../data/products'
+
 // Curated High-Res Dessert Image Library for One-Click Admin Selection
 const IMAGE_LIBRARY = [
   { name: 'Artisanal Assortment', url: '/images/hero_chocolate.jpg' },
   { name: 'Dark Truffle Stack', url: '/images/chocolate_truffles_stack_1786684830986.jpg' },
   { name: 'Luxury Gift Box', url: '/images/chocolate_gift_box_1786684802545.jpg' },
-  { name: 'Dark Chocolate Bar', url: '/images/chocolate_bar_dark_1786685613569.jpg' },
+  { name: 'Dark Chocolate Bar', url: '/images/chocolate_bar.jpg' },
   { name: 'Kitchen Showcase', url: '/images/chocolatier_kitchen_1786684770776.jpg' },
-  { name: 'Master Chocolatier', url: '/images/master_chocolatier_1786685634338.jpg' },
+  { name: 'Master Chocolatier', url: '/images/master_chocolatier.jpg' },
 ]
 
 export default function AdminProductsPage() {
-  const [products, setProducts] = useState([])
-  const [categoriesList, setCategoriesList] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [products, setProducts] = useState(PRODUCTS)
+  const [categoriesList, setCategoriesList] = useState(CATEGORIES)
+  const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [todayMenuFilter, setTodayMenuFilter] = useState('ALL') // 'ALL' | 'ACTIVE_TODAY' | 'UNAVAILABLE'
@@ -47,16 +49,17 @@ export default function AdminProductsPage() {
 
   const loadData = async () => {
     try {
-      setLoading(true)
       const data = await apiRequest('/admin/products', { isAdmin: true })
-      setProducts(data.products || [])
+      if (data && data.products && data.products.length > 0) {
+        setProducts(data.products)
+      }
 
       const catData = await apiRequest('/products')
-      setCategoriesList(catData.categories || [])
+      if (catData && catData.categories && catData.categories.length > 0) {
+        setCategoriesList(catData.categories)
+      }
     } catch (err) {
-      console.error('Failed to load products:', err)
-    } finally {
-      setLoading(false)
+      console.warn('Backend unavailable, using rich static catalogue:', err.message)
     }
   }
 
@@ -240,7 +243,7 @@ export default function AdminProductsPage() {
   })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', gap: '14px' }}>
       
       {/* ─── STATIC TOP SECTION (Header + Today's Menu Controls + Filters) ─── */}
       <div style={{ flexShrink: 0 }}>
@@ -398,14 +401,14 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
-      {/* ─── SCROLLABLE PRODUCTS TABLE SECTION (Inline Scroll Only) ─── */}
-      <div style={{ flex: 1, minHeight: 0, background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {/* ─── SCROLLABLE PRODUCTS TABLE SECTION ─── */}
+      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading products...</div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>No products found matching your search.</div>
         ) : (
-          <table className="admin-table" style={{ margin: 0 }}>
+          <table className="admin-table" style={{ margin: 0, minWidth: '700px' }}>
             <thead style={{ position: 'sticky', top: 0, background: '#FAF6F0', zIndex: 3, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
               <tr>
                 <th>Dessert Item</th>

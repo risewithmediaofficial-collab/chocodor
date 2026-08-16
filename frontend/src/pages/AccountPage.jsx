@@ -20,6 +20,44 @@ export default function AccountPage() {
   const [reviewModalItem, setReviewModalItem] = useState(null)
   const [reviewedProductMap, setReviewedProductMap] = useState({})
 
+  // Password Change State
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwdMsg, setPwdMsg] = useState(null)
+  const [pwdSubmitting, setPwdSubmitting] = useState(false)
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    setPwdMsg(null)
+
+    if (newPassword !== confirmPassword) {
+      setPwdMsg({ type: 'error', text: 'New passwords do not match' })
+      return
+    }
+
+    if (newPassword.length < 6) {
+      setPwdMsg({ type: 'error', text: 'New password must be at least 6 characters long' })
+      return
+    }
+
+    setPwdSubmitting(true)
+    try {
+      const res = await apiRequest('/auth/change-password', {
+        method: 'POST',
+        body: { currentPassword, newPassword },
+      })
+      setPwdMsg({ type: 'success', text: res.message || 'Password changed successfully!' })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err) {
+      setPwdMsg({ type: 'error', text: err.message })
+    } finally {
+      setPwdSubmitting(false)
+    }
+  }
+
   const { ref: cardRef, handleMove, handleLeave } = useMouseTilt(8)
 
   useEffect(() => {
@@ -466,8 +504,8 @@ export default function AccountPage() {
                 </p>
               </div>
             ) : (
-              <div style={{ background: '#FFFFFF', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(61,37,30,0.1)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '16px', border: '1px solid rgba(61,37,30,0.1)' }}>
+                <table style={{ width: '100%', minWidth: '560px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                   <thead>
                     <tr style={{ background: '#FAF6F0', borderBottom: '1px solid rgba(61,37,30,0.08)' }}>
                       <th style={{ padding: '14px 18px' }}>Date</th>
@@ -506,12 +544,12 @@ export default function AccountPage() {
           </div>
         )}
 
-        {/* TAB 5: PROFILE */}
+        {/* TAB 5: PROFILE & SECURITY */}
         {activeTab === 'profile' && (
-          <div style={{ marginTop: '28px', maxWidth: '640px' }}>
+          <div style={{ marginTop: '28px', maxWidth: '640px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--cocoa-dark)', marginBottom: '16px' }}>
-                Customer Information
+                👤 Customer Information
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
                 <div>
@@ -519,7 +557,7 @@ export default function AccountPage() {
                   <strong>{customer.name}</strong>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Mobile: </span>
+                  <span style={{ color: 'var(--text-muted)' }}>Mobile Number: </span>
                   <strong>{customer.mobile}</strong>
                 </div>
                 <div>
@@ -531,6 +569,87 @@ export default function AccountPage() {
                   <strong style={{ color: 'var(--caramel)' }}>{royalty?.royaltyId}</strong>
                 </div>
               </div>
+            </div>
+
+            {/* Change Password Form */}
+            <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--cocoa-dark)', marginBottom: '8px' }}>
+                🔐 Change Account Password
+              </h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '16px' }}>
+                Walk-in customer initial password was your mobile number. You can update your password below at any time.
+              </p>
+
+              {pwdMsg && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    marginBottom: '14px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    background: pwdMsg.type === 'success' ? '#E2F0E6' : '#FDE8E8',
+                    color: pwdMsg.type === 'success' ? '#2E6F40' : '#BA1B1B',
+                  }}
+                >
+                  {pwdMsg.text}
+                </div>
+              )}
+
+              <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                    Current Password (or Mobile Number) *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter current password or mobile number"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                    New Password (Min. 6 Characters) *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new secure password"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                    Confirm New Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px' }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={pwdSubmitting}
+                  className="btn btn--gold btn--sm"
+                  style={{ alignSelf: 'flex-start', padding: '10px 20px', marginTop: '4px' }}
+                >
+                  {pwdSubmitting ? 'Updating Password...' : 'Update Password →'}
+                </button>
+              </form>
             </div>
           </div>
         )}

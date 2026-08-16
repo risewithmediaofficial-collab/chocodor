@@ -97,8 +97,22 @@ export default function AdminOrdersPage() {
     }
   }
 
+  const handleDeleteOrder = async (order) => {
+    if (!window.confirm(`Are you sure you want to delete order "${order.order_number}"? This will permanently remove its line items, bill, and KOT ticket.`)) return
+    try {
+      await apiRequest(`/admin/orders/${order.id || order.order_number}`, {
+        method: 'DELETE',
+        isAdmin: true,
+      })
+      alert(`✓ Order "${order.order_number}" deleted successfully.`)
+      fetchOrders(true)
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`)
+    }
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', gap: '14px' }}>
       
       {/* ─── STATIC TOP CONTROLS ─── */}
       <div style={{ flexShrink: 0 }}>
@@ -206,8 +220,8 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* ─── SCROLLABLE ORDERS TABLE SECTION (Inline Scroll Only) ─── */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
+      {/* ─── SCROLLABLE ORDERS TABLE SECTION ─── */}
+      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
             Loading live orders...
@@ -217,7 +231,7 @@ export default function AdminOrdersPage() {
             No orders found matching the filter criteria.
           </div>
         ) : (
-          <table className="admin-table" style={{ margin: 0 }}>
+          <table className="admin-table" style={{ margin: 0, minWidth: '780px' }}>
             <thead style={{ position: 'sticky', top: 0, background: '#FAF6F0', zIndex: 3, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
               <tr>
                 <th>Order Number</th>
@@ -354,6 +368,15 @@ export default function AdminOrdersPage() {
                           Cancel
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        style={{ padding: '4px 8px', fontSize: '11px', background: '#FDE8E8', color: '#BA1B1B', border: '1px solid rgba(186,27,27,0.2)' }}
+                        onClick={() => handleDeleteOrder(ord)}
+                        title="Permanently delete order"
+                      >
+                        🗑️ Delete
+                      </button>
                     </div>
                   </td>
                 </tr>

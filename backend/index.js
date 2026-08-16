@@ -1,15 +1,6 @@
-// Suppress experimental SQLite warning
-const originalEmitWarning = process.emitWarning
-process.emitWarning = (warning, ...args) => {
-  if (typeof warning === 'string' && warning.includes('SQLite is an experimental feature')) return
-  if (typeof warning === 'object' && warning?.message?.includes('SQLite')) return
-  return originalEmitWarning.call(process, warning, ...args)
-}
-
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import { initDB } from './db.js'
 import { connectMongoDB } from './mongodb.js'
 import authRoutes from './routes/auth.js'
 import productRoutes from './routes/products.js'
@@ -21,10 +12,6 @@ import kotRoutes from './routes/kot.js'
 import settingsRoutes from './routes/settings.js'
 import reportsRoutes from './routes/reports.js'
 
-// Initialize Databases
-initDB()
-connectMongoDB()
-
 const app = express()
 const PORT = process.env.PORT || 5000
 
@@ -32,7 +19,7 @@ const PORT = process.env.PORT || 5000
 app.use(cors())
 app.use(express.json())
 
-// API Routes (mounted on both /api/* and /* for universal reverse-proxy support)
+// API Routes (mounted on both /api/* and /* for reverse-proxy support)
 app.use('/api/auth', authRoutes)
 app.use('/auth', authRoutes)
 
@@ -88,9 +75,9 @@ app.get('/', (req, res) => {
     </head>
     <body>
       <div class="card">
-        <span class="badge"><span class="status-dot"></span> Backend API Live (Node 22)</span>
+        <span class="badge"><span class="status-dot"></span> Backend API Live (MongoDB 7.0)</span>
         <h1>🍫 Choco D'or REST API</h1>
-        <p>You are viewing the backend API service (Port ${PORT}). The customer storefront and admin dashboard are served by the frontend container.</p>
+        <p>You are viewing the MongoDB-backed backend API service (Port ${PORT}). The customer storefront and admin dashboard are served by the frontend container.</p>
         <div class="btn-group">
           <a href="${clientUrl}/admin" class="btn btn--gold">🚀 Open Admin & POS Portal (Port 8084) →</a>
           <a href="${clientUrl}" class="btn btn--dark">🛍️ Open Customer Boutique Storefront →</a>
@@ -117,9 +104,18 @@ app.get(/^\/admin(?:\/.*)?$/, (req, res) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', brand: 'Choco D\'or Krishnagiri', time: new Date().toISOString() })
+  res.json({ status: 'ok', brand: "Choco D'or Krishnagiri", database: 'MongoDB', time: new Date().toISOString() })
 })
 
-app.listen(PORT, () => {
-  console.log(`🍫 Choco D'or Backend running on http://localhost:${PORT}`)
+// Connect MongoDB and Start Express Server
+async function startServer() {
+  await connectMongoDB()
+  app.listen(PORT, () => {
+    console.log(`🍫 Choco D'or Backend running on http://localhost:${PORT} with MongoDB`)
+  })
+}
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err)
+  process.exit(1)
 })

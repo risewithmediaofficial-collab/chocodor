@@ -1,28 +1,34 @@
 import crypto from 'node:crypto'
-import { db } from '../db.js'
+import {
+  Order,
+  OrderItem,
+  KOT,
+  Invoice,
+  StoreSetting,
+  Product,
+  Reward,
+  RewardRedemption,
+  OrderStatusHistory,
+  PromotionLog,
+} from '../models/index.js'
 import { creditOrderPoints, reverseOrderPoints } from './royaltyService.js'
 
 /**
- * Helper to fetch store settings from database
+ * Helper to fetch store settings from MongoDB
  */
-export function getStoreSettings(key) {
-  const row = db.prepare('SELECT value FROM store_settings WHERE key = ?').get(key)
+export async function getStoreSettings(key) {
+  const row = await StoreSetting.findOne({ key }).lean()
   if (!row) return null
-  try {
-    return JSON.parse(row.value)
-  } catch {
-    return row.value
-  }
+  return row.value
 }
 
 /**
  * Generates formatted sequence numbers (e.g. CD-2026-000001, INV-2026-000001, KOT-2026-000001)
  */
-function getNextSequenceNumber(prefix, tableName, column) {
-  const countRow = db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get()
-  const nextNum = (countRow ? countRow.count : 0) + 1
+async function getNextSequenceNumber(prefix, Model) {
+  const count = (await Model.countDocuments()) + 1
   const year = new Date().getFullYear()
-  const padded = String(nextNum).padStart(6, '0')
+  const padded = String(count).padStart(6, '0')
   return `${prefix}-${year}-${padded}`
 }
 
@@ -30,25 +36,23 @@ function getNextSequenceNumber(prefix, tableName, column) {
  * Checks whether customer is eligible for the first-order discount (₹20 OFF).
  * Verified server-side: checks both previous completed/placed orders and promotions_log.
  */
-export function checkFirstOrderEligibility(customerId, customerMobile) {
-  const promoSettings = getStoreSettings('promotions') || { firstOrderOfferEnabled: true, firstOrderDiscount: 20 }
+export async function checkFirstOrderEligibility(customerId, customerMobile) {
+  const promoSettings = (await getStoreSettings('promotions')) || { firstOrderOfferEnabled: true, firstOrderDiscount: 20 }
   if (!promoSettings.firstOrderOfferEnabled) return { eligible: false, discount: 0 }
 
   if (!customerId && !customerMobile) return { eligible: false, discount: 0 }
 
-  // Check past orders by customer ID or mobile
   let pastOrderCount = 0
   if (customerId) {
-    pastOrderCount += db.prepare("SELECT COUNT(*) as c FROM orders WHERE customer_id = ? AND status != 'CANCELLED'").get(customerId).c
+    pastOrderCount += await Order.countDocuments({ customer_id: customerId, status: { $ne: 'CANCELLED' } })
   }
   if (customerMobile) {
-    pastOrderCount += db.prepare("SELECT COUNT(*) as c FROM orders WHERE customer_mobile = ? AND status != 'CANCELLED'").get(customerMobile).c
+    pastOrderCount += await Order.countDocuments({ customer_mobile: customerMobile, status: { $ne: 'CANCELLED' } })
   }
 
-  // Also check promotions log
   let promoLogCount = 0
   if (customerId) {
-    promoLogCount += db.prepare("SELECT COUNT(*) as c FROM promotions_log WHERE customer_id = ? AND promo_code = 'FIRST_ORDER_20'").get(customerId).c
+    promoLogCount += await PromotionLog.countDocuments({ customer_id: customerId, promo_code: 'FIRST_ORDER_20' })
   }
 
   const eligible = pastOrderCount === 0 && promoLogCount === 0
@@ -61,7 +65,7 @@ export function checkFirstOrderEligibility(customerId, customerMobile) {
 /**
  * Calculates deterministic server-side quotation for items, delivery, and discounts.
  */
-export function calculateOrderQuote({
+export async function calculateOrderQuote({
   items,
   orderType = 'DELIVERY',
   customerId = null,
@@ -73,18 +77,14 @@ export function calculateOrderQuote({
     throw new Error('Order items list cannot be empty')
   }
 
-  const productStmt = db.prepare(`
-    SELECT id, name, price, royalty_points, is_available
-    FROM products WHERE id = ?
-  `)
-
   let subtotal = 0
   let totalRoyaltyPoints = 0
   const evaluatedItems = []
 
   for (const item of items) {
-    const product = productStmt.get(item.productId || item.id)
-    if (!product) throw new Error(`Product not found: ${item.productId || item.id}`)
+    const pId = item.productId || item.id
+    const product = await Product.findOne({ id: pId }).lean()
+    if (!product) throw new Error(`Product not found: ${pId}`)
     if (!product.is_available) throw new Error(`Product is currently unavailable: ${product.name}`)
 
     const quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
@@ -106,20 +106,19 @@ export function calculateOrderQuote({
   }
 
   // Delivery rules from store_settings
-  const deliverySettings = getStoreSettings('delivery') || { standardCharge: 40, freeThreshold: 500, enabled: true }
+  const deliverySettings = (await getStoreSettings('delivery')) || { standardCharge: 40, freeThreshold: 500, enabled: true }
   let deliveryFee = 0
   if (orderType === 'DELIVERY') {
     if (deliverySettings.enabled) {
       const threshold = deliverySettings.freeThreshold !== undefined ? deliverySettings.freeThreshold : 500
       const standardCharge = deliverySettings.standardCharge !== undefined ? deliverySettings.standardCharge : 40
-      // If subtotal >= threshold, free delivery (₹0). Exactly ₹500 qualifies.
       deliveryFee = subtotal >= threshold ? 0 : standardCharge
     }
   }
 
   // First-order discount evaluation
   let firstOrderDiscount = 0
-  const firstOrderCheck = checkFirstOrderEligibility(customerId, customerMobile)
+  const firstOrderCheck = await checkFirstOrderEligibility(customerId, customerMobile)
   if (applyFirstOrderOffer && firstOrderCheck.eligible) {
     firstOrderDiscount = firstOrderCheck.discount
   }
@@ -128,12 +127,10 @@ export function calculateOrderQuote({
   let rewardDiscount = 0
   let rewardData = null
   if (appliedRewardCode) {
-    const redemption = db.prepare(`
-      SELECT r.*, rew.name as reward_name
-      FROM reward_redemptions r
-      JOIN rewards rew ON r.reward_id = rew.id
-      WHERE r.redemption_code = ? AND r.is_used = 0
-    `).get(appliedRewardCode)
+    const redemption = await RewardRedemption.findOne({
+      redemption_code: appliedRewardCode,
+      is_used: 0,
+    }).lean()
 
     if (!redemption) {
       throw new Error('Invalid or already used reward code')
@@ -151,7 +148,6 @@ export function calculateOrderQuote({
     rewardData = redemption
   }
 
-  // Grand Total calculation
   const discountedSubtotal = Math.max(0, subtotal - firstOrderDiscount - rewardDiscount)
   const grandTotal = discountedSubtotal + deliveryFee
 
@@ -169,9 +165,9 @@ export function calculateOrderQuote({
 }
 
 /**
- * Creates an order in the database, generates invoice and KOT records, and captures immutable snapshots.
+ * Creates an order in MongoDB, generates invoice and KOT records, and captures immutable snapshots.
  */
-export function createOrder({
+export async function createOrder({
   customerId = null,
   customerName,
   customerMobile,
@@ -191,7 +187,7 @@ export function createOrder({
   if (!customerName || !customerName.trim()) throw new Error('Customer name is required')
   if (!customerMobile || customerMobile.trim().length < 10) throw new Error('Valid 10-digit mobile number is required')
 
-  const quote = calculateOrderQuote({
+  const quote = await calculateOrderQuote({
     items,
     orderType,
     customerId,
@@ -201,16 +197,15 @@ export function createOrder({
   })
 
   const orderId = `ord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
-  const orderNumber = getNextSequenceNumber('CD', 'orders', 'order_number')
-  const invoiceNumber = getNextSequenceNumber('INV', 'invoices', 'invoice_number')
-  const kotNumber = getNextSequenceNumber('KOT', 'kots', 'kot_number')
+  const orderNumber = await getNextSequenceNumber('CD', Order)
+  const invoiceNumber = await getNextSequenceNumber('INV', Invoice)
+  const kotNumber = await getNextSequenceNumber('KOT', KOT)
   const now = new Date().toISOString()
 
   let initialStatus = 'NEW'
   let paymentStatus = 'PENDING'
 
   if (orderSource === 'OFFLINE') {
-    // POS orders with CASH / UPI / CARD paid at billing counter are marked PAID immediately
     if (['CASH', 'UPI', 'CARD'].includes(paymentMethod)) {
       paymentStatus = 'PAID'
       initialStatus = 'CONFIRMED'
@@ -218,7 +213,6 @@ export function createOrder({
       paymentStatus = 'PENDING'
     }
   } else {
-    // Online orders
     if (paymentMethod === 'COD') {
       paymentStatus = 'COD_PENDING'
       initialStatus = 'NEW'
@@ -228,158 +222,127 @@ export function createOrder({
     }
   }
 
-  const deliveryAddressStr = deliveryAddress ? JSON.stringify(deliveryAddress) : null
-
   // 1. Insert Order
-  db.prepare(`
-    INSERT INTO orders (
-      id, order_number, order_source, invoice_number, kot_number, customer_id, customer_name, customer_mobile, customer_email,
-      order_type, delivery_address, pickup_time, subtotal, delivery_fee, first_order_discount, reward_discount,
-      applied_reward_code, total_amount, total_royalty_points, points_credited,
-      status, payment_status, payment_method, pos_staff_id, table_or_token_no, notes, created_at, updated_at
-    ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, 0,
-      ?, ?, ?, ?, ?, ?, ?, ?
-    )
-  `).run(
-    orderId,
-    orderNumber,
-    orderSource,
-    invoiceNumber,
-    kotNumber,
-    customerId,
-    customerName.trim(),
-    customerMobile.trim(),
-    customerEmail ? customerEmail.trim() : '',
-    orderType,
-    deliveryAddressStr,
-    pickupTime,
-    quote.subtotal,
-    quote.deliveryFee,
-    quote.firstOrderDiscount,
-    quote.rewardDiscount,
-    appliedRewardCode || null,
-    quote.grandTotal,
-    quote.totalRoyaltyPoints,
-    initialStatus,
-    paymentStatus,
-    paymentMethod,
-    posStaffId || null,
-    tableOrTokenNo || null,
-    notes || '',
-    now,
-    now
-  )
+  await Order.create({
+    id: orderId,
+    order_number: orderNumber,
+    order_source: orderSource,
+    invoice_number: invoiceNumber,
+    kot_number: kotNumber,
+    customer_id: customerId,
+    customer_name: customerName.trim(),
+    customer_mobile: customerMobile.trim(),
+    customer_email: customerEmail ? customerEmail.trim() : '',
+    order_type: orderType,
+    delivery_address: deliveryAddress,
+    pickup_time: pickupTime,
+    subtotal: quote.subtotal,
+    delivery_fee: quote.deliveryFee,
+    first_order_discount: quote.firstOrderDiscount,
+    reward_discount: quote.rewardDiscount,
+    applied_reward_code: appliedRewardCode || null,
+    total_amount: quote.grandTotal,
+    total_royalty_points: quote.totalRoyaltyPoints,
+    points_credited: 0,
+    status: initialStatus,
+    payment_status: paymentStatus,
+    payment_method: paymentMethod,
+    pos_staff_id: posStaffId || null,
+    table_or_token_no: tableOrTokenNo || null,
+    notes: notes || '',
+    created_at: now,
+    updated_at: now,
+  })
 
   // 2. Insert Order Item Snapshots
-  const itemInsert = db.prepare(`
-    INSERT INTO order_items (
-      id, order_id, product_id, product_name_snapshot,
-      unit_price_snapshot, royalty_points_snapshot,
-      quantity, subtotal, total_points
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-
-  for (const item of quote.items) {
-    const itemId = `item_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
-    itemInsert.run(
-      itemId,
-      orderId,
-      item.productId,
-      item.name,
-      item.unitPrice,
-      item.royaltyPointsPerUnit,
-      item.quantity,
-      item.subtotal,
-      item.totalPoints
-    )
-  }
+  const itemDocs = quote.items.map((item) => ({
+    id: `item_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+    order_id: orderId,
+    product_id: item.productId,
+    product_name_snapshot: item.name,
+    unit_price_snapshot: item.unitPrice,
+    royalty_points_snapshot: item.royaltyPointsPerUnit,
+    quantity: item.quantity,
+    subtotal: item.subtotal,
+    total_points: item.totalPoints,
+  }))
+  await OrderItem.insertMany(itemDocs)
 
   // 3. Insert KOT
-  db.prepare(`
-    INSERT INTO kots (
-      id, kot_number, order_id, order_number, order_source, customer_name, customer_mobile,
-      order_type, items, special_instructions, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', ?, ?)
-  `).run(
-    `kot_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-    kotNumber,
-    orderId,
-    orderNumber,
-    orderSource,
-    customerName.trim(),
-    customerMobile.trim(),
-    orderType,
-    JSON.stringify(quote.items),
-    notes || '',
-    now,
-    now
-  )
+  await KOT.create({
+    id: `kot_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+    kot_number: kotNumber,
+    order_id: orderId,
+    order_number: orderNumber,
+    order_source: orderSource,
+    customer_name: customerName.trim(),
+    customer_mobile: customerMobile.trim(),
+    order_type: orderType,
+    items: quote.items,
+    special_instructions: notes || '',
+    status: 'NEW',
+    created_at: now,
+    updated_at: now,
+  })
 
   // 4. Insert Invoice
-  db.prepare(`
-    INSERT INTO invoices (
-      id, invoice_number, order_id, order_number, customer_name, customer_mobile, customer_address,
-      subtotal, first_order_discount, reward_discount, delivery_charge, total_amount,
-      payment_method, payment_status, royalty_points_earned, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    `inv_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-    invoiceNumber,
-    orderId,
-    orderNumber,
-    customerName.trim(),
-    customerMobile.trim(),
-    deliveryAddressStr,
-    quote.subtotal,
-    quote.firstOrderDiscount,
-    quote.rewardDiscount,
-    quote.deliveryFee,
-    quote.grandTotal,
-    paymentMethod,
-    paymentStatus,
-    quote.totalRoyaltyPoints,
-    now
-  )
+  await Invoice.create({
+    id: `inv_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+    invoice_number: invoiceNumber,
+    order_id: orderId,
+    order_number: orderNumber,
+    customer_name: customerName.trim(),
+    customer_mobile: customerMobile.trim(),
+    customer_address: deliveryAddress,
+    subtotal: quote.subtotal,
+    first_order_discount: quote.firstOrderDiscount,
+    reward_discount: quote.rewardDiscount,
+    delivery_charge: quote.deliveryFee,
+    total_amount: quote.grandTotal,
+    payment_method: paymentMethod,
+    payment_status: paymentStatus,
+    royalty_points_earned: quote.totalRoyaltyPoints,
+    created_at: now,
+  })
 
   // 5. Insert Status History
-  db.prepare(`
-    INSERT INTO order_status_history (id, order_id, status, changed_by, notes, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(`osh_${Date.now()}`, orderId, initialStatus, orderSource === 'OFFLINE' ? 'POS_STAFF' : 'CUSTOMER', 'Order created', now)
+  await OrderStatusHistory.create({
+    id: `osh_${Date.now()}`,
+    order_id: orderId,
+    status: initialStatus,
+    changed_by: orderSource === 'OFFLINE' ? 'POS_STAFF' : 'CUSTOMER',
+    notes: 'Order created',
+    created_at: now,
+  })
 
   // 6. Record Promotions Log if first-order offer used
   if (quote.firstOrderDiscount > 0 && customerId) {
-    db.prepare(`
-      INSERT INTO promotions_log (id, promo_code, customer_id, order_id, discount_amount, created_at)
-      VALUES (?, 'FIRST_ORDER_20', ?, ?, ?, ?)
-    `).run(`prm_${Date.now()}`, customerId, orderId, quote.firstOrderDiscount, now)
+    await PromotionLog.create({
+      id: `prm_${Date.now()}`,
+      promo_code: 'FIRST_ORDER_20',
+      customer_id: customerId,
+      order_id: orderId,
+      discount_amount: quote.firstOrderDiscount,
+      created_at: now,
+    })
   }
 
   // 7. Mark reward coupon as used
   if (quote.rewardData) {
-    db.prepare(`
-      UPDATE reward_redemptions
-      SET is_used = 1, used_order_id = ?
-      WHERE id = ?
-    `).run(orderId, quote.rewardData.id)
+    await RewardRedemption.updateOne(
+      { id: quote.rewardData.id },
+      { is_used: 1, used_order_id: orderId }
+    )
   }
 
-  // If POS order is completed immediately upon cash payment:
-  if (orderSource === 'OFFLINE' && paymentStatus === 'PAID') {
-    // Check if auto-complete is active or keep in CONFIRMED/PREPARING
-  }
-
-  return getOrderById(orderId)
+  return await getOrderById(orderId)
 }
 
 /**
  * Updates order status and keeps KOT, invoice, history, and points ledger strictly synchronized.
  */
-export function updateOrderStatus(orderId, newStatus, changedBy = 'ADMIN', notes = '') {
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId)
+export async function updateOrderStatus(orderId, newStatus, changedBy = 'ADMIN', notes = '') {
+  const order = await Order.findOne({ id: orderId })
   if (!order) throw new Error('Order not found')
 
   const validStatuses = [
@@ -401,113 +364,117 @@ export function updateOrderStatus(orderId, newStatus, changedBy = 'ADMIN', notes
   const now = new Date().toISOString()
   let paymentStatusUpdate = order.payment_status
 
-  // When order is delivered / completed for COD orders, mark as COD_CONFIRMED / PAID
   if (['DELIVERED', 'COMPLETED'].includes(newStatus)) {
     if (order.payment_status === 'COD_PENDING') {
       paymentStatusUpdate = 'COD_CONFIRMED'
     }
   }
 
-  db.prepare(`
-    UPDATE orders
-    SET status = ?, payment_status = ?, updated_at = ?
-    WHERE id = ?
-  `).run(newStatus, paymentStatusUpdate, now, orderId)
+  await Order.updateOne(
+    { id: orderId },
+    { status: newStatus, payment_status: paymentStatusUpdate, updated_at: now }
+  )
 
   // Update Invoice payment status
-  db.prepare(`
-    UPDATE invoices
-    SET payment_status = ?
-    WHERE order_id = ?
-  `).run(paymentStatusUpdate, orderId)
+  await Invoice.updateOne({ order_id: orderId }, { payment_status: paymentStatusUpdate })
 
   // Synchronize KOT status
   if (['PREPARING', 'READY', 'COMPLETED'].includes(newStatus)) {
-    db.prepare('UPDATE kots SET status = ?, updated_at = ? WHERE order_id = ?').run(newStatus, now, orderId)
+    await KOT.updateOne({ order_id: orderId }, { status: newStatus, updated_at: now })
   } else if (newStatus === 'CONFIRMED') {
-    db.prepare("UPDATE kots SET status = 'NEW', updated_at = ? WHERE order_id = ?").run(now, orderId)
+    await KOT.updateOne({ order_id: orderId }, { status: 'NEW', updated_at: now })
   }
 
   // Log status history
-  db.prepare(`
-    INSERT INTO order_status_history (id, order_id, status, changed_by, notes, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(`osh_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`, orderId, newStatus, changedBy, notes, now)
+  await OrderStatusHistory.create({
+    id: `osh_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`,
+    order_id: orderId,
+    status: newStatus,
+    changed_by: changedBy,
+    notes: notes,
+    created_at: now,
+  })
 
   // Point crediting trigger on COMPLETED
   if (newStatus === 'COMPLETED') {
     if (order.points_credited === 0 && order.customer_id) {
-      creditOrderPoints(order.id, changedBy)
+      await creditOrderPoints(order.id, changedBy)
     }
   }
 
   // Point reversal on CANCELLED if previously credited
   if (newStatus === 'CANCELLED' && order.points_credited === 1 && order.customer_id) {
-    reverseOrderPoints(order.id, `Order ${order.order_number} Cancelled`, changedBy)
+    await reverseOrderPoints(order.id, `Order ${order.order_number} Cancelled`, changedBy)
   }
 
-  return getOrderById(orderId)
+  return await getOrderById(orderId)
 }
 
 /**
  * Updates Razorpay payment status after server verification.
  */
-export function updateRazorpayPaymentSuccess(orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature) {
+export async function updateRazorpayPaymentSuccess(orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature) {
   const now = new Date().toISOString()
-  db.prepare(`
-    UPDATE orders
-    SET payment_status = 'PAID', status = 'CONFIRMED',
-        razorpay_order_id = ?, razorpay_payment_id = ?, razorpay_signature = ?, updated_at = ?
-    WHERE id = ?
-  `).run(razorpayOrderId, razorpayPaymentId, razorpaySignature, now, orderId)
+  await Order.updateOne(
+    { id: orderId },
+    {
+      payment_status: 'PAID',
+      status: 'CONFIRMED',
+      razorpay_order_id: razorpayOrderId,
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_signature: razorpaySignature,
+      updated_at: now,
+    }
+  )
 
-  db.prepare("UPDATE invoices SET payment_status = 'PAID' WHERE order_id = ?").run(orderId)
+  await Invoice.updateOne({ order_id: orderId }, { payment_status: 'PAID' })
 
-  // Log status history
-  db.prepare(`
-    INSERT INTO order_status_history (id, order_id, status, changed_by, notes, created_at)
-    VALUES (?, ?, 'CONFIRMED', 'RAZORPAY_VERIFICATION', 'Payment verified via Razorpay', ?)
-  `).run(`osh_${Date.now()}`, orderId, now)
+  await OrderStatusHistory.create({
+    id: `osh_${Date.now()}`,
+    order_id: orderId,
+    status: 'CONFIRMED',
+    changed_by: 'RAZORPAY_VERIFICATION',
+    notes: 'Payment verified via Razorpay',
+    created_at: now,
+  })
 
-  return getOrderById(orderId)
+  return await getOrderById(orderId)
 }
 
 /**
  * Marks payment as FAILED on Razorpay signature mismatch or client failure callback.
  */
-export function markPaymentFailed(orderId, failureReason = 'Payment failed or declined') {
+export async function markPaymentFailed(orderId, failureReason = 'Payment failed or declined') {
   const now = new Date().toISOString()
-  db.prepare(`
-    UPDATE orders
-    SET payment_status = 'FAILED', updated_at = ?
-    WHERE id = ?
-  `).run(now, orderId)
+  await Order.updateOne({ id: orderId }, { payment_status: 'FAILED', updated_at: now })
+  await Invoice.updateOne({ order_id: orderId }, { payment_status: 'FAILED' })
 
-  db.prepare("UPDATE invoices SET payment_status = 'FAILED' WHERE order_id = ?").run(orderId)
+  await OrderStatusHistory.create({
+    id: `osh_${Date.now()}`,
+    order_id: orderId,
+    status: 'PAYMENT_FAILED',
+    changed_by: 'PAYMENT_GATEWAY',
+    notes: failureReason,
+    created_at: now,
+  })
 
-  db.prepare(`
-    INSERT INTO order_status_history (id, order_id, status, changed_by, notes, created_at)
-    VALUES (?, ?, 'PAYMENT_FAILED', 'PAYMENT_GATEWAY', ?, ?)
-  `).run(`osh_${Date.now()}`, orderId, failureReason, now)
-
-  return getOrderById(orderId)
+  return await getOrderById(orderId)
 }
 
 /**
  * Retrieves full order details with snapshots and items.
  */
-export function getOrderById(orderId) {
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId)
+export async function getOrderById(orderId) {
+  const order = await Order.findOne({ id: orderId }).lean()
   if (!order) return null
 
-  const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(orderId)
-  const history = db.prepare('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC').all(orderId)
-  const invoice = db.prepare('SELECT * FROM invoices WHERE order_id = ?').get(orderId)
-  const kot = db.prepare('SELECT * FROM kots WHERE order_id = ?').get(orderId)
+  const items = await OrderItem.find({ order_id: orderId }).lean()
+  const history = await OrderStatusHistory.find({ order_id: orderId }).sort({ created_at: 1 }).lean()
+  const invoice = await Invoice.findOne({ order_id: orderId }).lean()
+  const kot = await KOT.findOne({ order_id: orderId }).lean()
 
   return {
     ...order,
-    delivery_address: order.delivery_address ? JSON.parse(order.delivery_address) : null,
     items,
     history,
     invoice,
@@ -518,59 +485,63 @@ export function getOrderById(orderId) {
 /**
  * Retrieves order by readable order number (e.g. CD-2026-000001).
  */
-export function getOrderByNumber(orderNumber) {
-  const order = db.prepare('SELECT * FROM orders WHERE order_number = ?').get(orderNumber)
+export async function getOrderByNumber(orderNumber) {
+  const order = await Order.findOne({ order_number: orderNumber }).lean()
   if (!order) return null
-  return getOrderById(order.id)
+  return await getOrderById(order.id)
 }
 
 /**
- * Live orders polling query supporting `since` timestamp, status filtering, and source filtering (ONLINE/OFFLINE).
+ * Live orders polling query supporting `since` timestamp, status filtering, and source filtering.
  */
-export function getLiveOrders({ since, status, source, search, fromDate, toDate, limit = 50, offset = 0 } = {}) {
-  let query = 'SELECT * FROM orders WHERE 1=1'
-  const params = []
+export async function getLiveOrders({ since, status, source, search, fromDate, toDate, limit = 50, offset = 0 } = {}) {
+  const filter = {}
 
   if (since) {
-    query += ' AND updated_at > ?'
-    params.push(since)
+    filter.updated_at = { $gt: since }
   }
 
   if (status) {
-    query += ' AND status = ?'
-    params.push(status)
+    filter.status = status
   }
 
   if (source) {
-    query += ' AND order_source = ?'
-    params.push(source)
+    filter.order_source = source
   }
 
-  if (fromDate) {
-    query += ' AND created_at >= ?'
-    params.push(`${fromDate}T00:00:00.000Z`)
-  }
-
-  if (toDate) {
-    query += ' AND created_at <= ?'
-    params.push(`${toDate}T23:59:59.999Z`)
+  if (fromDate || toDate) {
+    filter.created_at = {}
+    if (fromDate) filter.created_at.$gte = `${fromDate}T00:00:00.000Z`
+    if (toDate) filter.created_at.$lte = `${toDate}T23:59:59.999Z`
   }
 
   if (search) {
-    query += ' AND (order_number LIKE ? OR customer_name LIKE ? OR customer_mobile LIKE ? OR invoice_number LIKE ?)'
-    const term = `%${search}%`
-    params.push(term, term, term, term)
+    const regex = new RegExp(search, 'i')
+    filter.$or = [
+      { order_number: regex },
+      { customer_name: regex },
+      { customer_mobile: regex },
+      { invoice_number: regex },
+    ]
   }
 
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
-  params.push(limit, offset)
+  const orders = await Order.find(filter)
+    .sort({ created_at: -1 })
+    .skip(offset)
+    .limit(limit)
+    .lean()
 
-  const rows = db.prepare(query).all(...params)
+  // Attach items to each order
+  const orderIds = orders.map((o) => o.id)
+  const allItems = await OrderItem.find({ order_id: { $in: orderIds } }).lean()
+  const itemsMap = {}
+  for (const item of allItems) {
+    if (!itemsMap[item.order_id]) itemsMap[item.order_id] = []
+    itemsMap[item.order_id].push(item)
+  }
 
-  const itemStmt = db.prepare('SELECT * FROM order_items WHERE order_id = ?')
-  return rows.map((ord) => ({
+  return orders.map((ord) => ({
     ...ord,
-    delivery_address: ord.delivery_address ? JSON.parse(ord.delivery_address) : null,
-    items: itemStmt.all(ord.id),
+    items: itemsMap[ord.id] || [],
   }))
 }

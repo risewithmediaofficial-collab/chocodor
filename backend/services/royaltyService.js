@@ -1,37 +1,50 @@
-import { db } from '../db.js'
 import crypto from 'node:crypto'
+import {
+  Customer,
+  RoyaltyMember,
+  RoyaltyTransaction,
+  Order,
+  Reward,
+  RewardRedemption,
+} from '../models/index.js'
 
-export function getMemberByCustomerId(customerId) {
-  return db.prepare('SELECT * FROM royalty_members WHERE customer_id = ?').get(customerId)
+export async function getMemberByCustomerId(customerId) {
+  return await RoyaltyMember.findOne({ customer_id: customerId }).lean()
 }
 
-export function getMemberById(memberId) {
-  return db.prepare('SELECT * FROM royalty_members WHERE id = ?').get(memberId)
+export async function getMemberById(memberId) {
+  return await RoyaltyMember.findOne({ id: memberId }).lean()
 }
 
-export function createRoyaltyMember(customerId) {
-  // Generate sequence-based or random unique readable Royalty ID
-  const count = db.prepare('SELECT COUNT(*) as count FROM royalty_members').get().count + 1
+export async function createRoyaltyMember(customerId) {
+  // Generate sequence-based unique readable Royalty ID
+  const count = (await RoyaltyMember.countDocuments()) + 1
   const royaltyId = `CDR-${String(count).padStart(6, '0')}`
   const memberId = `mem-${crypto.randomUUID()}`
   const now = new Date().toISOString()
 
-  db.prepare(`
-    INSERT INTO royalty_members (id, customer_id, royalty_id, current_points, lifetime_points, points_redeemed, tier, created_at)
-    VALUES (?, ?, ?, 0, 0, 0, 'MEMBER', ?)
-  `).run(memberId, customerId, royaltyId, now)
+  await RoyaltyMember.create({
+    id: memberId,
+    customer_id: customerId,
+    royalty_id: royaltyId,
+    current_points: 0,
+    lifetime_points: 0,
+    points_redeemed: 0,
+    tier: 'MEMBER',
+    created_at: now,
+  })
 
-  return getMemberById(memberId)
+  return await getMemberById(memberId)
 }
 
 /**
  * Idempotently credit points when an order reaches COMPLETED.
  */
-export function creditOrderPoints(orderIdOrObj, adminId = 'SYSTEM') {
+export async function creditOrderPoints(orderIdOrObj, adminId = 'SYSTEM') {
   const orderId = typeof orderIdOrObj === 'object' ? orderIdOrObj.orderId : orderIdOrObj
   const assignedAdmin = (typeof orderIdOrObj === 'object' && orderIdOrObj.adminId) ? orderIdOrObj.adminId : adminId
 
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId)
+  const order = await Order.findOne({ id: orderId })
   if (!order) throw new Error('Order not found')
 
   // Prevent duplicate crediting
@@ -40,20 +53,20 @@ export function creditOrderPoints(orderIdOrObj, adminId = 'SYSTEM') {
   }
 
   if (order.total_royalty_points <= 0) {
-    db.prepare('UPDATE orders SET points_credited = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), orderId)
+    await Order.updateOne({ id: orderId }, { points_credited: 1, updated_at: new Date().toISOString() })
     return { success: true, pointsCredited: 0 }
   }
 
   // Find or create royalty member for customer
   if (!order.customer_id) {
     // Guest order: mark credited without member assignment
-    db.prepare('UPDATE orders SET points_credited = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), orderId)
+    await Order.updateOne({ id: orderId }, { points_credited: 1, updated_at: new Date().toISOString() })
     return { success: true, pointsCredited: 0, message: 'Guest order - no account connected' }
   }
 
-  let member = getMemberByCustomerId(order.customer_id)
+  let member = await getMemberByCustomerId(order.customer_id)
   if (!member) {
-    member = createRoyaltyMember(order.customer_id)
+    member = await createRoyaltyMember(order.customer_id)
   }
 
   const pointsToAdd = order.total_royalty_points
@@ -62,47 +75,43 @@ export function creditOrderPoints(orderIdOrObj, adminId = 'SYSTEM') {
   const now = new Date().toISOString()
   const txId = `tx-${crypto.randomUUID()}`
 
-  // Atomic transaction
-  db.exec('BEGIN TRANSACTION')
-  try {
-    // 1. Insert ledger transaction
-    db.prepare(`
-      INSERT INTO royalty_transactions (id, member_id, customer_id, type, amount, direction, order_id, reason, balance_after, created_by, created_at)
-      VALUES (?, ?, ?, 'ORDER_COMPLETION', ?, 'CREDIT', ?, ?, ?, ?, ?)
-    `).run(txId, member.id, order.customer_id, pointsToAdd, order.id, `Order Completion #${order.order_number}`, newBalance, adminId, now)
+  // 1. Insert ledger transaction
+  await RoyaltyTransaction.create({
+    id: txId,
+    member_id: member.id,
+    customer_id: order.customer_id,
+    type: 'ORDER_COMPLETION',
+    amount: pointsToAdd,
+    direction: 'CREDIT',
+    order_id: order.id,
+    reason: `Order Completion #${order.order_number}`,
+    balance_after: newBalance,
+    created_by: assignedAdmin,
+    created_at: now,
+  })
 
-    // 2. Update member balance
-    db.prepare(`
-      UPDATE royalty_members 
-      SET current_points = ?, lifetime_points = ?
-      WHERE id = ?
-    `).run(newBalance, newLifetime, member.id)
+  // 2. Update member balance
+  await RoyaltyMember.updateOne(
+    { id: member.id },
+    { current_points: newBalance, lifetime_points: newLifetime }
+  )
 
-    // 3. Mark order as points credited
-    db.prepare(`
-      UPDATE orders 
-      SET points_credited = 1, updated_at = ?
-      WHERE id = ?
-    `).run(now, order.id)
+  // 3. Mark order as points credited
+  await Order.updateOne({ id: order.id }, { points_credited: 1, updated_at: now })
 
-    db.exec('COMMIT')
-    return { success: true, pointsCredited: pointsToAdd, newBalance }
-  } catch (err) {
-    db.exec('ROLLBACK')
-    throw err
-  }
+  return { success: true, pointsCredited: pointsToAdd, newBalance }
 }
 
 /**
  * Reverse points if a completed order is cancelled / refunded.
  */
-export function reverseOrderPoints(orderId, reason = 'Order Cancellation / Refund', adminId = 'SYSTEM') {
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId)
+export async function reverseOrderPoints(orderId, reason = 'Order Cancellation / Refund', adminId = 'SYSTEM') {
+  const order = await Order.findOne({ id: orderId })
   if (!order || order.points_credited !== 1 || !order.customer_id) {
     return { success: false, message: 'No points to reverse' }
   }
 
-  const member = getMemberByCustomerId(order.customer_id)
+  const member = await getMemberByCustomerId(order.customer_id)
   if (!member) return { success: false, message: 'Member not found' }
 
   const pointsToDeduct = order.total_royalty_points
@@ -110,46 +119,39 @@ export function reverseOrderPoints(orderId, reason = 'Order Cancellation / Refun
   const now = new Date().toISOString()
   const txId = `tx-${crypto.randomUUID()}`
 
-  db.exec('BEGIN TRANSACTION')
-  try {
-    db.prepare(`
-      INSERT INTO royalty_transactions (id, member_id, customer_id, type, amount, direction, order_id, reason, balance_after, created_by, created_at)
-      VALUES (?, ?, ?, 'REFUND', ?, 'DEBIT', ?, ?, ?, ?, ?)
-    `).run(txId, member.id, order.customer_id, pointsToDeduct, order.id, `${reason} #${order.order_number}`, newBalance, adminId, now)
+  await RoyaltyTransaction.create({
+    id: txId,
+    member_id: member.id,
+    customer_id: order.customer_id,
+    type: 'REFUND',
+    amount: pointsToDeduct,
+    direction: 'DEBIT',
+    order_id: order.id,
+    reason: `${reason} #${order.order_number}`,
+    balance_after: newBalance,
+    created_by: adminId,
+    created_at: now,
+  })
 
-    db.prepare(`
-      UPDATE royalty_members 
-      SET current_points = ?
-      WHERE id = ?
-    `).run(newBalance, member.id)
+  await RoyaltyMember.updateOne({ id: member.id }, { current_points: newBalance })
+  await Order.updateOne({ id: order.id }, { points_credited: 0, updated_at: now })
 
-    db.prepare(`
-      UPDATE orders 
-      SET points_credited = 0, updated_at = ?
-      WHERE id = ?
-    `).run(now, order.id)
-
-    db.exec('COMMIT')
-    return { success: true, pointsDeducted: pointsToDeduct, newBalance }
-  } catch (err) {
-    db.exec('ROLLBACK')
-    throw err
-  }
+  return { success: true, pointsDeducted: pointsToDeduct, newBalance }
 }
 
 /**
  * Redeem a reward using points. Generates a unique single-use code.
  */
-export function redeemReward(customerId, rewardId) {
-  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId)
+export async function redeemReward(customerId, rewardId) {
+  const customer = await Customer.findOne({ id: customerId })
   if (!customer) throw new Error('Customer not found')
 
-  let member = getMemberByCustomerId(customerId)
+  let member = await getMemberByCustomerId(customerId)
   if (!member) {
-    member = createRoyaltyMember(customerId)
+    member = await createRoyaltyMember(customerId)
   }
 
-  const reward = db.prepare('SELECT * FROM rewards WHERE id = ? AND is_active = 1').get(rewardId)
+  const reward = await Reward.findOne({ id: rewardId, is_active: 1 })
   if (!reward) throw new Error('Reward not found or inactive')
 
   if (member.current_points < reward.points_required) {
@@ -165,47 +167,56 @@ export function redeemReward(customerId, rewardId) {
   const redemptionId = `red-${crypto.randomUUID()}`
   const txId = `tx-${crypto.randomUUID()}`
 
-  db.exec('BEGIN TRANSACTION')
-  try {
-    // 1. Debit transaction in ledger
-    db.prepare(`
-      INSERT INTO royalty_transactions (id, member_id, customer_id, type, amount, direction, reward_id, reason, balance_after, created_by, created_at)
-      VALUES (?, ?, ?, 'REWARD_REDEMPTION', ?, 'DEBIT', ?, ?, ?, 'CUSTOMER', ?)
-    `).run(txId, member.id, customerId, reward.points_required, reward.id, `Redeemed: ${reward.name} (${redemptionCode})`, newBalance, now.toISOString())
+  // 1. Debit transaction in ledger
+  await RoyaltyTransaction.create({
+    id: txId,
+    member_id: member.id,
+    customer_id: customerId,
+    type: 'REWARD_REDEMPTION',
+    amount: reward.points_required,
+    direction: 'DEBIT',
+    reward_id: reward.id,
+    reason: `Redeemed: ${reward.name} (${redemptionCode})`,
+    balance_after: newBalance,
+    created_by: 'CUSTOMER',
+    created_at: now.toISOString(),
+  })
 
-    // 2. Update member points
-    db.prepare(`
-      UPDATE royalty_members 
-      SET current_points = ?, points_redeemed = ?
-      WHERE id = ?
-    `).run(newBalance, newRedeemed, member.id)
+  // 2. Update member points
+  await RoyaltyMember.updateOne(
+    { id: member.id },
+    { current_points: newBalance, points_redeemed: newRedeemed }
+  )
 
-    // 3. Create single-use redemption code
-    db.prepare(`
-      INSERT INTO reward_redemptions (id, reward_id, member_id, customer_id, redemption_code, discount_value, min_order_value, points_spent, is_used, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-    `).run(redemptionId, reward.id, member.id, customerId, redemptionCode, reward.discount_value, reward.min_order_value, reward.points_required, expiresAt, now.toISOString())
+  // 3. Create single-use redemption code
+  await RewardRedemption.create({
+    id: redemptionId,
+    reward_id: reward.id,
+    member_id: member.id,
+    customer_id: customerId,
+    redemption_code: redemptionCode,
+    discount_value: reward.discount_value,
+    min_order_value: reward.min_order_value,
+    points_spent: reward.points_required,
+    is_used: 0,
+    expires_at: expiresAt,
+    created_at: now.toISOString(),
+  })
 
-    db.exec('COMMIT')
-
-    return {
-      success: true,
-      redemptionCode,
-      discountValue: reward.discount_value,
-      minOrderValue: reward.min_order_value,
-      newBalance,
-      expiresAt,
-    }
-  } catch (err) {
-    db.exec('ROLLBACK')
-    throw err
+  return {
+    success: true,
+    redemptionCode,
+    discountValue: reward.discount_value,
+    minOrderValue: reward.min_order_value,
+    newBalance,
+    expiresAt,
   }
 }
 
 /**
  * Manual point adjustment by Admin with mandatory reason.
  */
-export function manualPointAdjustment(customerId, amount, direction, reason, adminId = 'ADMIN') {
+export async function manualPointAdjustment(customerId, amount, direction, reason, adminId = 'ADMIN') {
   if (!reason || reason.trim().length < 3) {
     throw new Error('A valid reason is required for manual point adjustments')
   }
@@ -213,9 +224,9 @@ export function manualPointAdjustment(customerId, amount, direction, reason, adm
     throw new Error('Amount must be greater than zero')
   }
 
-  let member = getMemberByCustomerId(customerId)
+  let member = await getMemberByCustomerId(customerId)
   if (!member) {
-    member = createRoyaltyMember(customerId)
+    member = await createRoyaltyMember(customerId)
   }
 
   const numericAmount = parseInt(amount, 10)
@@ -234,34 +245,32 @@ export function manualPointAdjustment(customerId, amount, direction, reason, adm
   const now = new Date().toISOString()
   const txId = `tx-${crypto.randomUUID()}`
 
-  db.exec('BEGIN TRANSACTION')
-  try {
-    db.prepare(`
-      INSERT INTO royalty_transactions (id, member_id, customer_id, type, amount, direction, reason, balance_after, created_by, created_at)
-      VALUES (?, ?, ?, 'MANUAL_ADJUSTMENT', ?, ?, ?, ?, ?, ?)
-    `).run(txId, member.id, customerId, numericAmount, direction, `Manual Adjustment: ${reason}`, newBalance, adminId, now)
+  await RoyaltyTransaction.create({
+    id: txId,
+    member_id: member.id,
+    customer_id: customerId,
+    type: 'MANUAL_ADJUSTMENT',
+    amount: numericAmount,
+    direction: direction,
+    reason: `Manual Adjustment: ${reason}`,
+    balance_after: newBalance,
+    created_by: adminId,
+    created_at: now,
+  })
 
-    db.prepare(`
-      UPDATE royalty_members 
-      SET current_points = ?, lifetime_points = ?
-      WHERE id = ?
-    `).run(newBalance, newLifetime, member.id)
+  await RoyaltyMember.updateOne(
+    { id: member.id },
+    { current_points: newBalance, lifetime_points: newLifetime }
+  )
 
-    db.exec('COMMIT')
-    return { success: true, newBalance }
-  } catch (err) {
-    db.exec('ROLLBACK')
-    throw err
-  }
+  return { success: true, newBalance }
 }
 
 /**
  * Fetch customer ledger history.
  */
-export function getCustomerTransactions(customerId) {
-  return db.prepare(`
-    SELECT * FROM royalty_transactions 
-    WHERE customer_id = ? 
-    ORDER BY created_at DESC
-  `).all(customerId)
+export async function getCustomerTransactions(customerId) {
+  return await RoyaltyTransaction.find({ customer_id: customerId })
+    .sort({ created_at: -1 })
+    .lean()
 }

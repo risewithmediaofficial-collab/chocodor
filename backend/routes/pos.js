@@ -1,13 +1,14 @@
 import express from 'express'
 import crypto from 'node:crypto'
-import { db } from '../db.js'
+import bcrypt from 'bcryptjs'
+import { Customer, RoyaltyMember, Order, Invoice } from '../models/index.js'
 import { createOrder, updateOrderStatus, getOrderById } from '../services/orderService.js'
 import { generateCustomerQR } from '../services/qrService.js'
 
 const router = express.Router()
 
 // Fast Offline Customer Lookup by Mobile / Name / Royalty ID
-router.get('/customers/search', (req, res) => {
+router.get('/customers/search', async (req, res) => {
   try {
     const { q = '' } = req.query
     const term = q.trim().toLowerCase()
@@ -16,22 +17,44 @@ router.get('/customers/search', (req, res) => {
       return res.json({ customers: [] })
     }
 
-    const customers = db.prepare(`
-      SELECT c.id, c.name, c.email, c.mobile, m.royalty_id, m.current_points, m.tier
-      FROM customers c
-      LEFT JOIN royalty_members m ON c.id = m.customer_id
-      WHERE LOWER(c.name) LIKE ? OR c.mobile LIKE ? OR LOWER(m.royalty_id) LIKE ?
-      LIMIT 10
-    `).all(`%${term}%`, `%${term}%`, `%${term}%`)
+    const regex = new RegExp(term, 'i')
 
-    res.json({ customers })
+    // Find matching members
+    const matchingMembers = await RoyaltyMember.find({ royalty_id: regex }).lean()
+    const memberCustIds = matchingMembers.map((m) => m.customer_id)
+
+    const customers = await Customer.find({
+      $or: [{ name: regex }, { mobile: regex }, { id: { $in: memberCustIds } }],
+    })
+      .limit(10)
+      .lean()
+
+    const custIds = customers.map((c) => c.id)
+    const members = await RoyaltyMember.find({ customer_id: { $in: custIds } }).lean()
+    const memberMap = {}
+    for (const m of members) memberMap[m.customer_id] = m
+
+    const result = customers.map((c) => {
+      const m = memberMap[c.id] || {}
+      return {
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        mobile: c.mobile,
+        royalty_id: m.royalty_id || '',
+        current_points: m.current_points || 0,
+        tier: m.tier || 'MEMBER',
+      }
+    })
+
+    res.json({ customers: result })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
 // Fast POS Customer Creation & Instant QR Pass Generation
-router.post('/customers', (req, res) => {
+router.post('/customers', async (req, res) => {
   try {
     const { name, mobile, email = '', address = '' } = req.body
 
@@ -44,9 +67,9 @@ router.post('/customers', (req, res) => {
     }
 
     // Check if customer already exists with this mobile
-    let existing = db.prepare('SELECT id, name, mobile, email FROM customers WHERE mobile = ?').get(cleanMobile)
+    let existing = await Customer.findOne({ mobile: cleanMobile }).lean()
     if (existing) {
-      const member = db.prepare('SELECT royalty_id, current_points, tier FROM royalty_members WHERE customer_id = ?').get(existing.id)
+      const member = await RoyaltyMember.findOne({ customer_id: existing.id }).lean()
       return res.status(200).json({
         success: true,
         isExisting: true,
@@ -66,24 +89,33 @@ router.post('/customers', (req, res) => {
     const memberId = `mem_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
     const now = new Date().toISOString()
 
-    // Generate sequential Royalty ID
-    const countRow = db.prepare('SELECT COUNT(*) as count FROM royalty_members').get()
-    const nextNum = (countRow ? countRow.count : 0) + 1
-    const royaltyId = `CDR-${String(nextNum).padStart(6, '0')}`
+    const count = (await RoyaltyMember.countDocuments()) + 1
+    const royaltyId = `CDR-${String(count).padStart(6, '0')}`
 
-    const savedAddresses = address ? JSON.stringify([{ street: address.trim(), isDefault: true }]) : '[]'
+    const savedAddresses = address ? [{ street: address.trim(), isDefault: true }] : []
 
-    // Insert customer
-    db.prepare(`
-      INSERT INTO customers (id, name, email, mobile, password_hash, saved_addresses, created_at)
-      VALUES (?, ?, ?, ?, '', ?, ?)
-    `).run(customerId, name.trim(), email ? email.trim() : `${cleanMobile}@chocodor.in`, cleanMobile, savedAddresses, now)
+    const passwordHash = bcrypt.hashSync(cleanMobile, 10)
 
-    // Insert Royalty Member
-    db.prepare(`
-      INSERT INTO royalty_members (id, customer_id, royalty_id, current_points, lifetime_points, points_redeemed, tier, created_at)
-      VALUES (?, ?, ?, 0, 0, 0, 'GOLD MEMBER', ?)
-    `).run(memberId, customerId, royaltyId, now)
+    await Customer.create({
+      id: customerId,
+      name: name.trim(),
+      email: email ? email.trim() : `${cleanMobile}@chocodor.in`,
+      mobile: cleanMobile,
+      password_hash: passwordHash,
+      saved_addresses: savedAddresses,
+      created_at: now,
+    })
+
+    await RoyaltyMember.create({
+      id: memberId,
+      customer_id: customerId,
+      royalty_id: royaltyId,
+      current_points: 0,
+      lifetime_points: 0,
+      points_redeemed: 0,
+      tier: 'GOLD MEMBER',
+      created_at: now,
+    })
 
     res.status(201).json({
       success: true,
@@ -112,11 +144,11 @@ router.post('/orders', async (req, res) => {
       customerId: incomingCustomerId,
       customerName = 'Walk-in Guest',
       customerMobile = '9999999999',
-      orderType = 'DINE_IN', // 'DINE_IN' | 'PICKUP' | 'DELIVERY'
+      orderType = 'DINE_IN',
       items,
       appliedRewardCode = null,
       applyFirstOrderOffer = false,
-      paymentMethod = 'CASH', // 'CASH' | 'UPI' | 'CARD' | 'RAZORPAY'
+      paymentMethod = 'CASH',
       posStaffId = 'COUNTER-1',
       tableOrTokenNo = '',
       notes = '',
@@ -128,32 +160,42 @@ router.post('/orders', async (req, res) => {
 
     // Auto-detect or auto-create customer account for real mobile numbers
     if (cleanMobile.length === 10 && cleanMobile !== '9999999999') {
-      let existingCust = db.prepare('SELECT id, name, mobile FROM customers WHERE mobile = ?').get(cleanMobile)
+      let existingCust = await Customer.findOne({ mobile: cleanMobile }).lean()
       if (!existingCust) {
-        // Auto-create customer account immediately!
         finalCustomerId = `cust_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
         const memberId = `mem_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
         const now = new Date().toISOString()
 
-        const countRow = db.prepare('SELECT COUNT(*) as count FROM royalty_members').get()
-        const nextNum = (countRow ? countRow.count : 0) + 1
-        const royaltyId = `CDR-${String(nextNum).padStart(6, '0')}`
+        const count = (await RoyaltyMember.countDocuments()) + 1
+        const royaltyId = `CDR-${String(count).padStart(6, '0')}`
+        const passwordHash = bcrypt.hashSync(cleanMobile, 10)
 
-        db.prepare(`
-          INSERT INTO customers (id, name, email, mobile, password_hash, saved_addresses, created_at)
-          VALUES (?, ?, ?, ?, '', '[]', ?)
-        `).run(finalCustomerId, customerName.trim(), `${cleanMobile}@chocodor.in`, cleanMobile, now)
+        await Customer.create({
+          id: finalCustomerId,
+          name: customerName.trim(),
+          email: `${cleanMobile}@chocodor.in`,
+          mobile: cleanMobile,
+          password_hash: passwordHash,
+          saved_addresses: [],
+          created_at: now,
+        })
 
-        db.prepare(`
-          INSERT INTO royalty_members (id, customer_id, royalty_id, current_points, lifetime_points, points_redeemed, tier, created_at)
-          VALUES (?, ?, ?, 0, 0, 0, 'GOLD MEMBER', ?)
-        `).run(memberId, finalCustomerId, royaltyId, now)
+        await RoyaltyMember.create({
+          id: memberId,
+          customer_id: finalCustomerId,
+          royalty_id: royaltyId,
+          current_points: 0,
+          lifetime_points: 0,
+          points_redeemed: 0,
+          tier: 'GOLD MEMBER',
+          created_at: now,
+        })
       } else {
         finalCustomerId = existingCust.id
       }
     }
 
-    const order = createOrder({
+    const order = await createOrder({
       customerId: finalCustomerId || null,
       customerName: customerName.trim(),
       customerMobile: cleanMobile.length === 10 ? cleanMobile : customerMobile.trim(),
@@ -168,14 +210,13 @@ router.post('/orders', async (req, res) => {
       notes,
     })
 
-    // If payment is counter cash/upi/card:
     let finalOrder = order
     if (autoComplete) {
-      finalOrder = updateOrderStatus(order.id, 'COMPLETED', 'POS_STAFF', 'Completed at Billing Counter')
+      finalOrder = await updateOrderStatus(order.id, 'COMPLETED', 'POS_STAFF', 'Completed at Billing Counter')
     } else {
-      db.prepare("UPDATE orders SET payment_status = 'PAID' WHERE id = ?").run(order.id)
-      db.prepare("UPDATE invoices SET payment_status = 'PAID' WHERE order_id = ?").run(order.id)
-      finalOrder = getOrderById(order.id)
+      await Order.updateOne({ id: order.id }, { payment_status: 'PAID' })
+      await Invoice.updateOne({ order_id: order.id }, { payment_status: 'PAID' })
+      finalOrder = await getOrderById(order.id)
     }
 
     // Generate or fetch QR Token for this customer if identified
@@ -188,15 +229,26 @@ router.post('/orders', async (req, res) => {
       }
     }
 
+    let customerDetails = null
+    if (finalCustomerId) {
+      const c = await Customer.findOne({ id: finalCustomerId }).lean()
+      const m = await RoyaltyMember.findOne({ customer_id: finalCustomerId }).lean()
+      customerDetails = {
+        id: c?.id,
+        name: c?.name,
+        mobile: c?.mobile,
+        royalty_id: m?.royalty_id || '',
+        current_points: m?.current_points || 0,
+      }
+    }
+
     res.status(201).json({
       success: true,
       order: finalOrder,
       invoice: finalOrder.invoice,
       kot: finalOrder.kot,
       qr: qrDetails,
-      customer: finalCustomerId
-        ? db.prepare('SELECT c.id, c.name, c.mobile, m.royalty_id, m.current_points FROM customers c JOIN royalty_members m ON c.id = m.customer_id WHERE c.id = ?').get(finalCustomerId)
-        : null,
+      customer: customerDetails,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })

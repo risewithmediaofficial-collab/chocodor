@@ -4,9 +4,11 @@ import { formatPrice } from '../../data/content'
 import InvoiceModal from '../../components/InvoiceModal'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 
+import { PRODUCTS, CATEGORIES } from '../../data/products'
+
 export default function AdminPOSPage() {
-  const [categories, setCategories] = useState([])
-  const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState(CATEGORIES)
+  const [products, setProducts] = useState(PRODUCTS)
   const [activeCategory, setActiveCategory] = useState('ALL')
   const [productSearch, setProductSearch] = useState('')
   const [onlyTodayMenu, setOnlyTodayMenu] = useState(true)
@@ -38,10 +40,14 @@ export default function AdminPOSPage() {
     async function loadData() {
       try {
         const prodData = await apiRequest('/products')
-        setCategories(prodData.categories || [])
-        setProducts(prodData.products || [])
+        if (prodData && prodData.products && prodData.products.length > 0) {
+          setProducts(prodData.products)
+        }
+        if (prodData && prodData.categories && prodData.categories.length > 0) {
+          setCategories(prodData.categories)
+        }
       } catch (err) {
-        console.error('POS menu load error:', err)
+        console.warn('Backend unavailable, using static POS menu:', err.message)
       }
     }
     loadData()
@@ -222,7 +228,7 @@ export default function AdminPOSPage() {
         </div>
 
         {/* Customer Input Fields */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '14px', alignItems: 'center', position: 'relative' }}>
+        <div className="pos-step-1-grid">
           <div>
             <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
               Customer Name *
@@ -231,7 +237,7 @@ export default function AdminPOSPage() {
               type="text"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="e.g. Sathish"
+              placeholder="Enter customer name"
               style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '13px', background: '#FFFFFF' }}
             />
           </div>
@@ -245,7 +251,7 @@ export default function AdminPOSPage() {
               maxLength={10}
               value={customerMobile}
               onChange={(e) => setCustomerMobile(e.target.value)}
-              placeholder="e.g. 9488054036"
+              placeholder="Enter 10-digit mobile number"
               style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '13px', background: '#FFFFFF' }}
             />
 
@@ -283,14 +289,14 @@ export default function AdminPOSPage() {
             )}
           </div>
 
-          <div style={{ paddingTop: '18px' }}>
+          <div style={{ paddingTop: '10px' }}>
             {selectedCustomer ? (
               <div style={{ background: '#E2F0E6', color: '#2E6F40', padding: '10px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 800 }}>
                 ✓ Existing Member: {selectedCustomer.royalty_id} ({selectedCustomer.current_points} pts)
               </div>
             ) : customerMobile.replace(/\D/g, '').length === 10 ? (
               <div style={{ background: '#FAF0E4', color: '#B37B24', padding: '10px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 800 }}>
-                ✨ New Customer: Account &amp; QR Pass will be auto-created!
+                ✨ New Customer: Account auto-created! (Login Password = Mobile No.)
               </div>
             ) : (
               <div style={{ color: 'var(--text-muted)', fontSize: '12px', padding: '10px 0' }}>
@@ -302,7 +308,7 @@ export default function AdminPOSPage() {
       </div>
 
       {/* ─── STEP 2: CATALOGUE & BILLING SPLIT SCREEN ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(360px, 1.2fr)', gap: '20px', alignItems: 'start' }}>
+      <div className="pos-split-layout">
         
         {/* LEFT: Menu Items Selection */}
         <div style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)', padding: '20px' }}>
@@ -344,7 +350,7 @@ export default function AdminPOSPage() {
           </div>
 
           {/* Category Chips */}
-          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '14px', scrollbarWidth: 'none' }}>
             <button
               type="button"
               className={`btn btn--sm ${activeCategory === 'ALL' ? 'btn--gold' : 'btn--outline'}`}
@@ -367,7 +373,7 @@ export default function AdminPOSPage() {
           </div>
 
           {/* Products Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px', maxHeight: '560px', overflowY: 'auto', paddingRight: '4px' }}>
+          <div className="pos-product-grid">
             {filteredProducts.map((p) => {
               const inCartQty = getItemQty(p.id)
 
@@ -592,12 +598,12 @@ export default function AdminPOSPage() {
             style={{ padding: '14px', fontSize: '14px', fontWeight: 900 }}
             onClick={handleCheckoutBill}
           >
-            {submitting ? 'Generating Bill...' : `✓ Complete Bill & Generate QR Pass (${formatPrice(grandTotal)})`}
+            {submitting ? 'Generating Bill...' : `✓ Complete Bill & Create Account (${formatPrice(grandTotal)})`}
           </button>
         </div>
       </div>
 
-      {/* ─── SUCCESS & QR ACCOUNT ACTIVATION MODAL ─── */}
+      {/* ─── SUCCESS & ACCOUNT ACTIVATION MODAL ─── */}
       {completedData && (
         <div className="cart-drawer-overlay" onClick={() => setCompletedData(null)}>
           <div
@@ -620,19 +626,16 @@ export default function AdminPOSPage() {
               </div>
             </div>
 
-            {/* Scannable QR Pass */}
-            {completedData.qr && (
-              <div style={{ background: '#FFFFFF', border: '2px dashed var(--caramel)', borderRadius: '16px', padding: '16px', marginBottom: '16px' }}>
-                <img
-                  src={completedData.qr.qrImage}
-                  alt="Customer QR Pass"
-                  style={{ width: '180px', height: '180px', margin: '0 auto', display: 'block', borderRadius: '8px' }}
-                />
-                <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: 800, color: 'var(--cocoa-dark)' }}>
-                  📲 Customer: Scan with Phone Camera
+            {/* Customer Login Credentials Notice */}
+            {completedData.customer?.mobile && completedData.customer.mobile !== '9999999999' && (
+              <div style={{ background: '#E2F0E6', border: '1px solid #2E6F40', borderRadius: '14px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', textAlign: 'left' }}>
+                <div style={{ fontWeight: 800, color: '#2E6F40', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>📱</span> Online Account Login Credentials:
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Scan to set password, activate Royalty card &amp; view complete order history online!
+                <div style={{ color: 'var(--cocoa-dark)' }}>• <strong>Username:</strong> {completedData.customer.mobile}</div>
+                <div style={{ color: 'var(--cocoa-dark)' }}>• <strong>1st Time Password:</strong> {completedData.customer.mobile}</div>
+                <div style={{ fontSize: '11px', color: '#2E6F40', marginTop: '6px', lineHeight: 1.4 }}>
+                  Customer can log in to view points, redeem rewards, and change their password anytime in their profile.
                 </div>
               </div>
             )}

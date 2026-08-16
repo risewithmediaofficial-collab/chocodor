@@ -77,6 +77,20 @@ export default function AdminKOTPage() {
     }
   }
 
+  const handleDeleteKot = async (kot) => {
+    if (!window.confirm(`Are you sure you want to remove kitchen ticket "${kot.kot_number}"?`)) return
+    try {
+      await apiRequest(`/admin/kot/${kot.id || kot.kot_number}`, {
+        method: 'DELETE',
+        isAdmin: true,
+      })
+      alert(`✓ Kitchen ticket "${kot.kot_number}" removed.`)
+      fetchKots(true)
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`)
+    }
+  }
+
   const filteredKots = kots.filter((k) => {
     // Status Filter
     let matchStatus = true
@@ -96,7 +110,7 @@ export default function AdminKOTPage() {
   })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', gap: '14px' }}>
       
       {/* ─── STATIC TOP CONTROLS SECTION ─── */}
       <div style={{ flexShrink: 0 }}>
@@ -347,14 +361,25 @@ export default function AdminKOTPage() {
                         </div>
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="btn btn--outline btn--sm"
-                          style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 800 }}
-                          onClick={() => setActiveInvoiceOrder(kot.order_number)}
-                        >
-                          🧾 View Bill
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn btn--outline btn--sm"
+                            style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 800 }}
+                            onClick={() => setActiveInvoiceOrder(kot.order_number)}
+                          >
+                            🧾 Bill
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--sm"
+                            style={{ padding: '4px 8px', fontSize: '11px', background: '#FDE8E8', color: '#BA1B1B', border: '1px solid rgba(186,27,27,0.2)' }}
+                            onClick={() => handleDeleteKot(kot)}
+                            title="Delete KOT"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -396,18 +421,29 @@ export default function AdminKOTPage() {
                         </div>
                       </div>
 
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          padding: '3px 8px',
-                          borderRadius: 'var(--radius-pill)',
-                          background: isNew ? '#FDF4D8' : isPrep ? '#FAF0E4' : isReady ? '#E2F0E6' : '#EEE',
-                          color: isNew ? '#8C6A12' : isPrep ? '#B37B24' : isReady ? '#2E6F40' : '#666',
-                        }}
-                      >
-                        {kot.status}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            padding: '3px 8px',
+                            borderRadius: 'var(--radius-pill)',
+                            background: isNew ? '#FDF4D8' : isPrep ? '#FAF0E4' : isReady ? '#E2F0E6' : '#EEE',
+                            color: isNew ? '#8C6A12' : isPrep ? '#B37B24' : isReady ? '#2E6F40' : '#666',
+                          }}
+                        >
+                          {kot.status}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn--sm"
+                          style={{ padding: '2px 6px', fontSize: '11px', background: '#FDE8E8', color: '#BA1B1B' }}
+                          onClick={() => handleDeleteKot(kot)}
+                          title="Delete KOT"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
 
                     {/* Customer */}

@@ -2,37 +2,39 @@ import crypto from 'node:crypto'
 import QRCode from 'qrcode'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { db } from '../db.js'
+import { Customer, RoyaltyMember, QRToken } from '../models/index.js'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'chocodor_royalty_secret_jwt_2026'
 
 /**
  * Generates a secure, cryptographically random, revocable QR token for a customer.
- * Previous active tokens for this customer are automatically revoked.
- * Produces both the secure scan URL and an actual scannable QR Data URL image.
  */
 export async function generateCustomerQR(customerId, baseUrl = 'http://localhost:5176') {
-  const customer = db.prepare('SELECT id, name, mobile, email, password_hash FROM customers WHERE id = ?').get(customerId)
+  const customer = await Customer.findOne({ id: customerId }).lean()
   if (!customer) throw new Error('Customer not found')
 
-  const member = db.prepare('SELECT id, royalty_id, current_points, tier FROM royalty_members WHERE customer_id = ?').get(customerId)
+  const member = await RoyaltyMember.findOne({ customer_id: customerId }).lean()
   if (!member) throw new Error('Customer is not a Royalty member')
 
   // Revoke existing active tokens for this customer
-  db.prepare("UPDATE qr_tokens SET status = 'REVOKED' WHERE customer_id = ? AND status = 'ACTIVE'").run(customerId)
+  await QRToken.updateMany({ customer_id: customerId, status: 'ACTIVE' }, { status: 'REVOKED' })
 
-  // Generate cryptographically secure token (32 bytes = 64 hex chars)
   const token = crypto.randomBytes(32).toString('hex')
   const tokenId = `qrt_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
   const now = new Date()
-  // Expires in 365 days unless revoked
   const expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString()
-  const firstLoginCompleted = (customer.password_hash && customer.password_hash.trim() !== '') ? 1 : 0
+  const firstLoginCompleted = customer.password_hash && customer.password_hash.trim() !== '' ? 1 : 0
 
-  db.prepare(`
-    INSERT INTO qr_tokens (id, customer_id, member_id, token, status, first_login_completed, expires_at, created_at)
-    VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
-  `).run(tokenId, customer.id, member.id, token, firstLoginCompleted, expiresAt, now.toISOString())
+  await QRToken.create({
+    id: tokenId,
+    customer_id: customer.id,
+    member_id: member.id,
+    token,
+    status: 'ACTIVE',
+    first_login_completed: firstLoginCompleted,
+    expires_at: expiresAt,
+    created_at: now.toISOString(),
+  })
 
   const scanUrl = `${baseUrl}/royalty/scan/${token}`
   const qrImage = await QRCode.toDataURL(scanUrl, {
@@ -60,20 +62,11 @@ export async function generateCustomerQR(customerId, baseUrl = 'http://localhost
 
 /**
  * Validates a scanned QR token.
- * Returns customer, royalty member, and first_login_completed status.
  */
-export function validateQRToken(token) {
+export async function validateQRToken(token) {
   if (!token) throw new Error('Token is required')
 
-  const qr = db.prepare(`
-    SELECT q.*, c.name as customer_name, c.mobile as customer_mobile, c.email as customer_email, c.password_hash,
-           m.royalty_id, m.current_points, m.lifetime_points, m.tier
-    FROM qr_tokens q
-    JOIN customers c ON q.customer_id = c.id
-    JOIN royalty_members m ON q.member_id = m.id
-    WHERE q.token = ?
-  `).get(token)
-
+  const qr = await QRToken.findOne({ token }).lean()
   if (!qr) {
     throw new Error('Invalid QR code. Token not recognized.')
   }
@@ -86,7 +79,10 @@ export function validateQRToken(token) {
     throw new Error('This Royalty QR card has expired. Please request a new card.')
   }
 
-  const needsPasswordSetup = !qr.password_hash || qr.password_hash.trim() === '' || qr.first_login_completed === 0
+  const customer = await Customer.findOne({ id: qr.customer_id }).lean()
+  const member = await RoyaltyMember.findOne({ id: qr.member_id }).lean()
+
+  const needsPasswordSetup = !customer?.password_hash || customer.password_hash.trim() === '' || qr.first_login_completed === 0
 
   return {
     isValid: true,
@@ -94,36 +90,33 @@ export function validateQRToken(token) {
     status: qr.status,
     needsPasswordSetup,
     customer: {
-      id: qr.customer_id,
-      name: qr.customer_name,
-      mobile: qr.customer_mobile,
-      email: qr.customer_email,
+      id: customer.id,
+      name: customer.name,
+      mobile: customer.mobile,
+      email: customer.email,
     },
     royalty: {
-      royaltyId: qr.royalty_id,
-      currentPoints: qr.current_points,
-      lifetimePoints: qr.lifetime_points,
-      tier: qr.tier,
+      royaltyId: member?.royalty_id || '',
+      currentPoints: member?.current_points || 0,
+      lifetimePoints: member?.lifetime_points || 0,
+      tier: member?.tier || 'MEMBER',
     },
   }
 }
 
 /**
- * First-Time QR Onboarding: Sets the customer's password and issues a signed JWT session.
+ * First-Time QR Onboarding: Sets customer password and issues signed JWT session.
  */
-export function setPasswordFromQR(token, newPassword) {
+export async function setPasswordFromQR(token, newPassword) {
   if (!newPassword || newPassword.length < 6) {
     throw new Error('Password must be at least 6 characters long')
   }
 
-  const validation = validateQRToken(token)
+  const validation = await validateQRToken(token)
   const passwordHash = bcrypt.hashSync(newPassword, 10)
 
-  // Update customer password
-  db.prepare('UPDATE customers SET password_hash = ? WHERE id = ?').run(passwordHash, validation.customer.id)
-
-  // Mark token as onboarded
-  db.prepare('UPDATE qr_tokens SET first_login_completed = 1 WHERE token = ?').run(token)
+  await Customer.updateOne({ id: validation.customer.id }, { password_hash: passwordHash })
+  await QRToken.updateOne({ token }, { first_login_completed: 1 })
 
   const jwtToken = jwt.sign(
     {
@@ -145,10 +138,10 @@ export function setPasswordFromQR(token, newPassword) {
 }
 
 /**
- * Frictionless Returning QR Login: Generates a signed session for a valid QR card.
+ * Returning QR Login: Generates a signed session for a valid QR card.
  */
-export function loginViaQR(token) {
-  const validation = validateQRToken(token)
+export async function loginViaQR(token) {
+  const validation = await validateQRToken(token)
 
   if (validation.needsPasswordSetup) {
     throw new Error('First-time password setup is required for this card')
@@ -176,7 +169,7 @@ export function loginViaQR(token) {
 /**
  * Revokes an active QR token for a customer.
  */
-export function revokeCustomerQR(customerId) {
-  const info = db.prepare("UPDATE qr_tokens SET status = 'REVOKED' WHERE customer_id = ? AND status = 'ACTIVE'").run(customerId)
-  return { revokedCount: info.changes }
+export async function revokeCustomerQR(customerId) {
+  const res = await QRToken.updateMany({ customer_id: customerId, status: 'ACTIVE' }, { status: 'REVOKED' })
+  return { revokedCount: res.modifiedCount }
 }

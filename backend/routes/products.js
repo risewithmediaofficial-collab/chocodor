@@ -1,35 +1,34 @@
 import express from 'express'
-import crypto from 'crypto'
-import { db } from '../db.js'
+import crypto from 'node:crypto'
+import { Category, Product, ProductReview } from '../models/index.js'
 
 const router = express.Router()
 
 // Get all active categories and products
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const categories = db.prepare(`
-      SELECT * FROM categories 
-      WHERE is_active = 1 
-      ORDER BY sort_order ASC
-    `).all()
+    const categories = await Category.find({ is_active: 1 }).sort({ sort_order: 1 }).lean()
+    const products = await Product.find().sort({ created_at: 1 }).lean()
 
-    const products = db.prepare(`
-      SELECT p.*, c.slug as category_slug, c.name as category_name 
-      FROM products p
-      JOIN categories c ON p.category_id = c.id
-      ORDER BY p.created_at ASC
-    `).all()
+    const catMap = {}
+    for (const c of categories) {
+      catMap[c.id] = { name: c.name, slug: c.slug }
+    }
 
     // Aggregate reviews for all products
-    const reviewStats = db.prepare(`
-      SELECT product_id, COUNT(*) as review_count, AVG(rating) as avg_rating
-      FROM product_reviews
-      WHERE status = 'APPROVED'
-      GROUP BY product_id
-    `).all()
+    const reviewStats = await ProductReview.aggregate([
+      { $match: { status: 'APPROVED' } },
+      {
+        $group: {
+          _id: '$product_id',
+          review_count: { $sum: 1 },
+          avg_rating: { $avg: '$rating' },
+        },
+      },
+    ])
     const statsMap = {}
     reviewStats.forEach((r) => {
-      statsMap[r.product_id] = {
+      statsMap[r._id] = {
         count: r.review_count,
         rating: Number(Number(r.avg_rating).toFixed(1)),
       }
@@ -45,11 +44,12 @@ router.get('/', (req, res) => {
       })),
       products: products.map((p) => {
         const stats = statsMap[p.id] || { count: 0, rating: 5.0 }
+        const cInfo = catMap[p.category_id] || { name: 'Desserts', slug: 'desserts' }
         return {
           id: p.id,
           categoryId: p.category_id,
-          categorySlug: p.category_slug,
-          category: p.category_name,
+          categorySlug: cInfo.slug,
+          category: cInfo.name,
           name: p.name,
           price: p.price,
           royaltyPoints: p.royalty_points,
@@ -61,7 +61,7 @@ router.get('/', (req, res) => {
           servingSuggestion: p.serving_suggestion || 'Best served warm. Enjoy within 24 hours of fresh boutique baking.',
           preparationTime: p.preparation_time || '15–20 mins',
           portionSize: p.portion_size || 'Serves 1–2',
-          extraImages: p.extra_images ? JSON.parse(p.extra_images || '[]') : [],
+          extraImages: p.extra_images || [],
           isAvailable: p.is_available === 1,
           isFeatured: p.is_featured === 1,
           isBestseller: p.is_bestseller === 1,
@@ -76,13 +76,11 @@ router.get('/', (req, res) => {
 })
 
 // Get reviews for a customer
-router.get('/customer/:customerId/reviews', (req, res) => {
+router.get('/customer/:customerId/reviews', async (req, res) => {
   try {
-    const reviews = db.prepare(`
-      SELECT * FROM product_reviews
-      WHERE customer_id = ?
-      ORDER BY created_at DESC
-    `).all(req.params.customerId)
+    const reviews = await ProductReview.find({ customer_id: req.params.customerId })
+      .sort({ created_at: -1 })
+      .lean()
     res.json({ reviews })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -90,32 +88,26 @@ router.get('/customer/:customerId/reviews', (req, res) => {
 })
 
 // Get single product with its reviews
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const product = db.prepare(`
-      SELECT p.*, c.name as category_name, c.slug as category_slug
-      FROM products p
-      JOIN categories c ON p.category_id = c.id
-      WHERE p.id = ?
-    `).get(req.params.id)
-
+    const product = await Product.findOne({ id: req.params.id }).lean()
     if (!product) return res.status(404).json({ error: 'Product not found' })
 
-    const reviews = db.prepare(`
-      SELECT * FROM product_reviews
-      WHERE product_id = ? AND status = 'APPROVED'
-      ORDER BY created_at DESC
-    `).all(req.params.id)
+    const category = await Category.findOne({ id: product.category_id }).lean()
+    const reviews = await ProductReview.find({ product_id: req.params.id, status: 'APPROVED' })
+      .sort({ created_at: -1 })
+      .lean()
 
-    const avgRating = reviews.length > 0
-      ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1))
-      : 5.0
+    const avgRating =
+      reviews.length > 0
+        ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1))
+        : 5.0
 
     res.json({
       id: product.id,
       categoryId: product.category_id,
-      categorySlug: product.category_slug,
-      category: product.category_name,
+      categorySlug: category?.slug || 'desserts',
+      category: category?.name || 'Dessert',
       name: product.name,
       price: product.price,
       royaltyPoints: product.royalty_points,
@@ -127,7 +119,7 @@ router.get('/:id', (req, res) => {
       servingSuggestion: product.serving_suggestion || 'Best served warm. Enjoy within 24 hours of fresh boutique baking.',
       preparationTime: product.preparation_time || '15–20 mins',
       portionSize: product.portion_size || 'Serves 1–2',
-      extraImages: product.extra_images ? JSON.parse(product.extra_images || '[]') : [],
+      extraImages: product.extra_images || [],
       isAvailable: product.is_available === 1,
       isFeatured: product.is_featured === 1,
       isBestseller: product.is_bestseller === 1,
@@ -140,8 +132,8 @@ router.get('/:id', (req, res) => {
   }
 })
 
-// Add a product review & rating (after ordering)
-router.post('/:id/reviews', (req, res) => {
+// Add a product review & rating
+router.post('/:id/reviews', async (req, res) => {
   try {
     const productId = req.params.id
     const { rating, reviewText, customerName, customerId, orderId } = req.body
@@ -158,20 +150,17 @@ router.post('/:id/reviews', (req, res) => {
     const reviewId = `rev_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
     const now = new Date().toISOString()
 
-    db.prepare(`
-      INSERT INTO product_reviews (
-        id, product_id, order_id, customer_id, customer_name, rating, review_text, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?)
-    `).run(
-      reviewId,
-      productId,
-      orderId || null,
-      customerId || 'guest',
-      customerName.trim(),
-      numRating,
-      (reviewText || '').trim(),
-      now
-    )
+    const review = await ProductReview.create({
+      id: reviewId,
+      product_id: productId,
+      order_id: orderId || null,
+      customer_id: customerId || 'guest',
+      customer_name: customerName.trim(),
+      rating: numRating,
+      review_text: (reviewText || '').trim(),
+      status: 'APPROVED',
+      created_at: now,
+    })
 
     res.json({
       success: true,

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { seedDefaultData } from './models/seed.js'
 
 let isMongoConnected = false
 
@@ -12,6 +13,10 @@ export async function connectMongoDB(retries = 5, delayMs = 3000) {
       })
       isMongoConnected = true
       console.log(`🍃 MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`)
+
+      // Run automatic seeding for collections
+      await seedDefaultData()
+      console.log('✅ MongoDB default seed data verified and ready.')
       return conn
     } catch (err) {
       isMongoConnected = false
@@ -19,7 +24,8 @@ export async function connectMongoDB(retries = 5, delayMs = 3000) {
         console.log(`⏳ MongoDB: Connection attempt ${attempt}/${retries} failed (${err.message}). Retrying in ${delayMs / 1000}s...`)
         await new Promise((res) => setTimeout(res, delayMs))
       } else {
-        console.log(`ℹ️  MongoDB: Could not connect to ${uri} after ${retries} attempts (${err.message}). Defaulting to built-in SQLite engine.`)
+        console.error(`❌ MongoDB: Could not connect to ${uri} after ${retries} attempts (${err.message}).`)
+        throw err
       }
     }
   }

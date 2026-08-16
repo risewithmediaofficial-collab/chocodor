@@ -1,6 +1,5 @@
 # ===================================================
-# Choco D'or Backend - Production Dockerfile
-# Node 22 Alpine provides built-in node:sqlite support
+# Choco D'or Backend - Production Dockerfile (MongoDB)
 # ===================================================
 FROM node:22-alpine
 

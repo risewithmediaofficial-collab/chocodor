@@ -1,8 +1,11 @@
-import { Link, NavLink, Outlet, Navigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useAdminAuth } from '../../context/AdminAuthContext'
 
 export default function AdminLayout() {
   const { admin, loading, logout } = useAdminAuth()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -29,10 +32,50 @@ export default function AdminLayout() {
     { label: '⚙️ Settings', to: '/admin/settings' },
   ]
 
+  const currentItem = navItems.find((n) => location.pathname.startsWith(n.to)) || navItems[0]
+
   return (
     <div className="admin-container">
-      {/* Sidebar */}
-      <aside className="admin-sidebar no-print">
+      {/* Mobile Top Navigation Bar */}
+      <header className="admin-mobile-header no-print">
+        <button
+          type="button"
+          className="admin-mobile-hamburger"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation"
+        >
+          <span className="admin-mobile-hamburger__line" />
+          <span className="admin-mobile-hamburger__line" />
+          <span className="admin-mobile-hamburger__line" />
+        </button>
+
+        <div className="admin-mobile-header__title">
+          <span style={{ fontSize: '1.2rem' }}>🍫</span>
+          <strong>{currentItem.label.replace(/^[\uD800-\uDBFF\uDC00-\uDFFF\s]+/, '')}</strong>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Link
+            to="/"
+            target="_blank"
+            className="btn btn--outline btn--sm"
+            style={{ padding: '4px 10px', fontSize: '11px' }}
+          >
+            Store ↗
+          </Link>
+        </div>
+      </header>
+
+      {/* Mobile Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="admin-mobile-overlay no-print"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar (Responsive drawer on mobile, sticky on desktop) */}
+      <aside className={`admin-sidebar no-print ${mobileMenuOpen ? 'admin-sidebar--open' : ''}`}>
         <div className="admin-sidebar__brand">
           <span style={{ fontSize: '1.6rem' }}>🍫</span>
           <div>
@@ -50,6 +93,7 @@ export default function AdminLayout() {
             <NavLink
               key={item.label}
               to={item.to}
+              onClick={() => setMobileMenuOpen(false)}
               className={({ isActive }) =>
                 `admin-nav-item ${isActive ? 'admin-nav-item--active' : ''}`
               }
