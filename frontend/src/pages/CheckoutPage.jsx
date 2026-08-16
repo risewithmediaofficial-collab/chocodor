@@ -273,11 +273,11 @@ export default function CheckoutPage() {
           {/* Left Form: Details */}
           <div className="cart-items-panel" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             {/* Section 1: Customer Contact */}
-            <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
+            <div style={{ background: '#FFFFFF', padding: 'clamp(14px, 3vw, 24px)', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--cocoa-dark)', marginBottom: '16px' }}>
                 1. Contact Information
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '14px' }}>
                 <div>
                   <label className="form-label">Full Name *</label>
                   <input
@@ -314,8 +314,8 @@ export default function CheckoutPage() {
             </div>
 
             {/* Section 2: Order Type & Delivery */}
-            <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ background: '#FFFFFF', padding: 'clamp(14px, 3vw, 24px)', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                 <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--cocoa-dark)', margin: 0 }}>
                   2. Order Type &amp; Address
                 </h3>
@@ -338,7 +338,7 @@ export default function CheckoutPage() {
               </div>
 
               {orderType === 'DELIVERY' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: '14px' }}>
                   <div>
                     <label className="form-label">Door / Flat / House No.</label>
                     <input
@@ -430,11 +430,11 @@ export default function CheckoutPage() {
             </div>
 
             {/* Section 3: Payment Method Selector */}
-            <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
+            <div style={{ background: '#FFFFFF', padding: 'clamp(14px, 3vw, 24px)', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--cocoa-dark)', marginBottom: '16px' }}>
                 3. Payment Method
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: '12px' }}>
                 <div
                   onClick={() => setPaymentMethod('RAZORPAY')}
                   style={{

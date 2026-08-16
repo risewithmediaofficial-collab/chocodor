@@ -357,7 +357,7 @@ export default function ProductDetailPage() {
 
             {/* Quantity Stepper & Add to Cart Controls */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* Stepper */}
                 <div
                   style={{
@@ -367,14 +367,15 @@ export default function ProductDetailPage() {
                     borderRadius: 'var(--radius-pill)',
                     border: '1px solid rgba(61,37,30,0.15)',
                     padding: '4px',
+                    flexShrink: 0,
                   }}
                 >
                   <button
                     type="button"
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                     style={{
-                      width: '38px',
-                      height: '38px',
+                      width: '36px',
+                      height: '36px',
                       borderRadius: '50%',
                       border: 'none',
                       background: '#FFFFFF',
@@ -389,15 +390,15 @@ export default function ProductDetailPage() {
                   >
                     −
                   </button>
-                  <span style={{ minWidth: '42px', textAlign: 'center', fontWeight: 800, fontSize: '16px', color: 'var(--cocoa-dark)' }}>
+                  <span style={{ minWidth: '36px', textAlign: 'center', fontWeight: 800, fontSize: '15px', color: 'var(--cocoa-dark)' }}>
                     {quantity}
                   </span>
                   <button
                     type="button"
                     onClick={() => setQuantity((q) => q + 1)}
                     style={{
-                      width: '38px',
-                      height: '38px',
+                      width: '36px',
+                      height: '36px',
                       borderRadius: '50%',
                       border: 'none',
                       background: '#FFFFFF',
@@ -419,7 +420,7 @@ export default function ProductDetailPage() {
                   type="button"
                   disabled={!product.isAvailable}
                   className="btn btn--gold"
-                  style={{ flex: 1, padding: '16px 24px', fontSize: '15px', fontWeight: 800, opacity: product.isAvailable ? 1 : 0.6 }}
+                  style={{ flex: '1 1 200px', padding: '14px 20px', fontSize: '14px', fontWeight: 800, opacity: product.isAvailable ? 1 : 0.6 }}
                   onClick={handleAddToCart}
                 >
                   {product.isAvailable ? `ADD TO CART • ${formatPrice(product.price * quantity)}` : 'Not on Today\'s Menu'}
@@ -437,7 +438,7 @@ export default function ProductDetailPage() {
                 <button
                   type="button"
                   className="btn btn--outline"
-                  style={{ padding: '14px', fontSize: '14px', fontWeight: 700 }}
+                  style={{ padding: '14px', fontSize: '14px', fontWeight: 700, width: '100%' }}
                   onClick={handleBuyNow}
                 >
                   Instant Checkout / Buy Now →
