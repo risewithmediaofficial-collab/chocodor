@@ -109,7 +109,7 @@ app.get('/', (req, res) => {
 })
 
 // Auto-redirect /admin requests on backend port to the frontend admin portal
-app.get('/admin*', (req, res) => {
+app.get(/^\/admin(?:\/.*)?$/, (req, res) => {
   const host = req.hostname || 'localhost'
   const clientUrl = process.env.CLIENT_URL || `http://${host}:8084`
   res.redirect(`${clientUrl}/admin`)

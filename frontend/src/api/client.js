@@ -42,32 +42,55 @@ export async function apiRequest(endpoint, options = {}) {
       return await res.json().catch(() => ({}))
     }
 
-    // 2. If Nginx returned 404 or gateway error, seamlessly retry on exposed Backend Port (:5008)
-    if (res.status === 404 || res.status >= 500) {
-      const fallbackUrl = getFallbackBaseUrl()
-      const fallbackRes = await fetch(`${fallbackUrl}${endpoint}`, config)
-      const fallbackData = await fallbackRes.json().catch(() => ({}))
-      if (fallbackRes.ok) {
-        return fallbackData
-      }
-      throw new Error(fallbackData.error || `Request failed with status ${fallbackRes.status}`)
-    }
-
+    // Parse backend JSON error message if available
     const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || `Request failed with status ${res.status}`)
-  } catch (err) {
-    // If initial fetch connection threw network error, attempt direct backend fallback
-    if (!err.message || !err.message.includes('status')) {
+
+    // 2. If Nginx returned 502/503/504 gateway error or 404 (proxy misrouting), retry on exposed backend port with 3s timeout
+    if (res.status === 404 || res.status >= 500) {
       try {
         const fallbackUrl = getFallbackBaseUrl()
-        const fallbackRes = await fetch(`${fallbackUrl}${endpoint}`, config)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000)
+
+        const fallbackRes = await fetch(`${fallbackUrl}${endpoint}`, {
+          ...config,
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
+        const fallbackData = await fallbackRes.json().catch(() => ({}))
+        if (fallbackRes.ok) {
+          return fallbackData
+        }
+        throw new Error(fallbackData.error || data.error || `Request failed with status ${fallbackRes.status}`)
+      } catch (fallbackErr) {
+        // If fallback failed or timed out, report backend error or primary response error
+        throw new Error(data.error || fallbackErr.message || `Request failed with status ${res.status}`)
+      }
+    }
+
+    throw new Error(data.error || `Request failed with status ${res.status}`)
+  } catch (err) {
+    // If initial fetch connection threw network error, attempt direct backend fallback with 3s timeout
+    if (!err.message || (!err.message.includes('status') && !err.message.includes('Invalid') && !err.message.includes('already exists'))) {
+      try {
+        const fallbackUrl = getFallbackBaseUrl()
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000)
+
+        const fallbackRes = await fetch(`${fallbackUrl}${endpoint}`, {
+          ...config,
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
         const fallbackData = await fallbackRes.json().catch(() => ({}))
         if (fallbackRes.ok) {
           return fallbackData
         }
         throw new Error(fallbackData.error || `Request failed with status ${fallbackRes.status}`)
-      } catch (fallbackErr) {
-        throw new Error(fallbackErr.message || err.message)
+      } catch {
+        throw err
       }
     }
     throw err
