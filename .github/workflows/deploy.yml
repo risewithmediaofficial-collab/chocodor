@@ -33,11 +33,16 @@ jobs:
             fi
 
             cd /docker/chocodor
-            git pull origin main
+            echo "📥 Fetching latest commits from main..."
+            git fetch origin main
+            git reset --hard origin/main
 
-            # Rebuild and start all containers (mongodb, backend, frontend)
-            docker compose down
-            docker compose up -d --build
+            echo "🔨 Building fresh frontend (no-cache) & backend containers..."
+            docker compose build --no-cache frontend
+            docker compose build backend
+
+            echo "🚀 Launching updated containers..."
+            docker compose up -d --force-recreate
             docker image prune -f
             echo "✅ Deployment complete! Containers status:"
             docker compose ps
