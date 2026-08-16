@@ -3,6 +3,7 @@ import { apiRequest } from '../api/client'
 import { formatPrice } from '../data/content'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { printElement } from '../utils/printHelper'
+import logoImg from '../assets/logo.jpg'
 
 export default function InvoiceModal({ orderId, invoiceNumber, onClose }) {
   useBodyScrollLock(true)
@@ -187,24 +188,18 @@ export default function InvoiceModal({ orderId, invoiceNumber, onClose }) {
           >
             {/* Header Section */}
             <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-              {/* Logo placeholder space reserved for Choco D'or logo */}
-              <div
+              <img
+                src={logoImg}
+                alt="Logo"
                 style={{
                   width: '64px',
                   height: '64px',
                   margin: '0 auto 6px',
-                  border: '1px dashed #D0C0B0',
                   borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: '#FAF6F0',
-                  fontSize: '1.8rem',
+                  objectFit: 'cover',
+                  display: 'block',
                 }}
-                title="Reserved Space for Choco D'or Official Logo"
-              >
-                🍫
-              </div>
+              />
 
               <div style={{ fontWeight: 900, fontSize: '15px', letterSpacing: '0.04em', textTransform: 'uppercase', color: '#000' }}>
                 {business.name || "Choco D'or"}

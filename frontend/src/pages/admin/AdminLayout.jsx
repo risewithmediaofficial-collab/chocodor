@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useAdminAuth } from '../../context/AdminAuthContext'
+import logoImg from '../../assets/logo.jpg'
 
 export default function AdminLayout() {
   const { admin, loading, logout } = useAdminAuth()
@@ -50,7 +51,11 @@ export default function AdminLayout() {
         </button>
 
         <div className="admin-mobile-header__title">
-          <span style={{ fontSize: '1.2rem' }}>🍫</span>
+          <img
+            src={logoImg}
+            alt="Choco D'or"
+            style={{ width: '26px', height: '26px', borderRadius: '6px', objectFit: 'cover' }}
+          />
           <strong>{currentItem.label.replace(/^[\uD800-\uDBFF\uDC00-\uDFFF\s]+/, '')}</strong>
         </div>
 
@@ -77,7 +82,11 @@ export default function AdminLayout() {
       {/* Sidebar (Responsive drawer on mobile, sticky on desktop) */}
       <aside className={`admin-sidebar no-print ${mobileMenuOpen ? 'admin-sidebar--open' : ''}`}>
         <div className="admin-sidebar__brand">
-          <span style={{ fontSize: '1.6rem' }}>🍫</span>
+          <img
+            src={logoImg}
+            alt="Choco D'or"
+            style={{ width: '38px', height: '38px', borderRadius: '8px', objectFit: 'cover' }}
+          />
           <div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', margin: 0, color: 'var(--cocoa-dark)' }}>
               Choco D&apos;or

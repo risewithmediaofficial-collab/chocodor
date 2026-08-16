@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { footerLinks, brand } from '../data/content'
+import logoImg from '../assets/logo.jpg'
 
 export default function Footer() {
   return (
@@ -8,7 +9,8 @@ export default function Footer() {
         <div className="footer__inner">
           <div className="footer__brand">
             <Link to="/" className="footer__logo">
-              CHOCO D&apos;OR
+              <img src={logoImg} alt="Choco D'or" className="footer__logo-img" />
+              <span>CHOCO D&apos;OR</span>
             </Link>
           </div>
 

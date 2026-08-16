@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminAuth } from '../../context/AdminAuthContext'
+import logoImg from '../../assets/logo.jpg'
 
 export default function AdminLoginPage() {
   const { login } = useAdminAuth()
@@ -30,7 +31,11 @@ export default function AdminLoginPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FAF6F0', padding: '20px' }}>
       <div style={{ width: '100%', maxWidth: '420px', background: '#FFFFFF', padding: '36px', borderRadius: '24px', boxShadow: '0 16px 48px rgba(43,23,18,0.1)', border: '1px solid rgba(61,37,30,0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '8px' }}>🍫</span>
+          <img
+            src={logoImg}
+            alt="Choco D'or"
+            style={{ width: '72px', height: '72px', borderRadius: '16px', margin: '0 auto 12px', display: 'block', objectFit: 'cover', boxShadow: '0 8px 24px rgba(43,23,18,0.15)' }}
+          />
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.6rem', color: 'var(--cocoa-dark)', margin: 0 }}>
             CHOCO D&apos;OR ADMIN
           </h2>

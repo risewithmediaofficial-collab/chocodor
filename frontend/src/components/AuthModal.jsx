@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
+import logoImg from '../assets/logo.jpg'
 
 export default function AuthModal() {
   const { authModalOpen, setAuthModalOpen, authMode, setAuthMode, login, register } = useAuth()
@@ -23,12 +24,13 @@ export default function AuthModal() {
 
     try {
       if (authMode === 'login') {
-        await login(email, password)
+        await login(mobile || email, password)
       } else {
         await register({ name, email, mobile, password })
       }
+      setAuthModalOpen(false)
     } catch (err) {
-      setError(err.message || 'Authentication failed. Please try again.')
+      setError(err.message || 'Authentication failed. Please check details.')
     } finally {
       setLoading(false)
     }
@@ -36,15 +38,15 @@ export default function AuthModal() {
 
   return (
     <AnimatePresence>
-      <div className="cart-drawer-overlay" onClick={() => setAuthModalOpen(false)}>
+      <div className="product-modal-backdrop" onClick={() => setAuthModalOpen(false)}>
         <motion.div
-          className="product-modal auth-modal"
-          initial={{ opacity: 0, scale: 0.92, y: 16 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: 16 }}
-          transition={{ duration: 0.25 }}
-          onClick={(e) => e.stopPropagation()}
+          className="product-modal"
           style={{ maxWidth: '440px' }}
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ duration: 0.3 }}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             type="button"
@@ -54,12 +56,24 @@ export default function AuthModal() {
             ✕
           </button>
 
-          <div className="product-modal__content" style={{ padding: '36px 32px' }}>
-            <span className="section-label section-label--eyebrow">
-              {authMode === 'login' ? 'WELCOME BACK' : 'JOIN CHOCO D\'OR ROYALTY'}
-            </span>
+          <div className="product-modal__content" style={{ padding: '32px 28px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <img
+                src={logoImg}
+                alt="Choco D'or"
+                style={{ width: '44px', height: '44px', borderRadius: '10px', objectFit: 'cover' }}
+              />
+              <div>
+                <span className="section-label section-label--eyebrow" style={{ display: 'block', margin: 0 }}>
+                  {authMode === 'login' ? 'WELCOME BACK' : 'JOIN CHOCO D\'OR ROYALTY'}
+                </span>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '14px', color: 'var(--cocoa-dark)' }}>
+                  Choco D&apos;or
+                </span>
+              </div>
+            </div>
 
-            <h2 className="product-modal__title" style={{ fontSize: '1.8rem', marginBottom: '8px' }}>
+            <h2 className="product-modal__title" style={{ fontSize: '1.6rem', marginBottom: '8px' }}>
               {authMode === 'login' ? 'Sign In' : 'Create Account'}
             </h2>
 

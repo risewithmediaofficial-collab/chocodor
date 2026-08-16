@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
 import { formatPrice } from '../data/content'
+import logoImg from '../assets/logo.jpg'
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -38,8 +39,10 @@ export default function Navbar() {
         <div className="navbar__container">
           {/* Left: Logo */}
           <Link to="/" className="navbar__logo">
-            <span className="navbar__logo-icon">🍫</span>
-            CHOCO D&apos;OR<span className="navbar__dot">.</span>
+            <img src={logoImg} alt="Choco D'or" className="navbar__logo-img" />
+            <span className="navbar__logo-text">
+              CHOCO D&apos;OR<span className="navbar__dot">.</span>
+            </span>
           </Link>
 
           {/* Center: Clean Nav Links */}
