@@ -41,12 +41,12 @@ export default function Footer() {
             ))}
           </nav>
 
-          <nav className="footer__col" aria-label="Follow">
+          <nav className="footer__col footer__col--boutique" aria-label="Visit Boutique">
             <span className="footer__col-title">Visit Boutique</span>
-            <p style={{ margin: '0 0 6px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            <p style={{ margin: '0 0 8px', fontSize: '13px', color: 'rgba(250, 246, 240, 0.8)', lineHeight: 1.5 }}>
               Royakottai flyover, near SBI Bank, Londenpet, Krishnagiri, Bayanapalli, Tamil Nadu 635001
             </p>
-            <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--caramel)', fontWeight: 700 }}>
+            <p style={{ margin: '0 0 12px', fontSize: '13px', color: 'var(--gold)', fontWeight: 700 }}>
               📞 +91 94880 54036
             </p>
             {footerLinks.follow.map((link) => (
