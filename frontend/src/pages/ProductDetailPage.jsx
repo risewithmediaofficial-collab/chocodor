@@ -73,6 +73,40 @@ export default function ProductDetailPage() {
     navigate('/checkout')
   }
 
+  const handleOpenReviewModal = async () => {
+    if (!customer) {
+      openLogin('Please sign in to your account to review desserts you have ordered.', async () => {
+        try {
+          const storedCust = JSON.parse(localStorage.getItem('chocodor_cust') || '{}')
+          const eligibility = await apiRequest(
+            `/products/${id}/review-eligibility?customerId=${storedCust.id || ''}&customerMobile=${encodeURIComponent(storedCust.mobile || '')}`
+          )
+          if (eligibility.canReview) {
+            setShowReviewModal(true)
+          } else {
+            alert(`🔒 Verified Order Required:\n\n${eligibility.message}`)
+          }
+        } catch {
+          // ignore
+        }
+      })
+      return
+    }
+
+    try {
+      const eligibility = await apiRequest(
+        `/products/${id}/review-eligibility?customerId=${customer.id}&customerMobile=${encodeURIComponent(customer.mobile || '')}`
+      )
+      if (!eligibility.canReview) {
+        alert(`🔒 Verified Order Required:\n\n${eligibility.message}`)
+        return
+      }
+      setShowReviewModal(true)
+    } catch {
+      alert(`🔒 Verified Order Required: You can only review confectioneries that you have ordered and tasted. Please place an order for this dessert first!`)
+    }
+  }
+
   if (loading) {
     return (
       <main className="page" style={{ padding: '80px 20px', textAlign: 'center' }}>
@@ -480,7 +514,7 @@ export default function ProductDetailPage() {
                 type="button"
                 className="btn btn--gold btn--sm"
                 style={{ padding: '8px 16px', fontWeight: 800 }}
-                onClick={() => setShowReviewModal(true)}
+                onClick={handleOpenReviewModal}
               >
                 ✍️ Write a Review
               </button>
@@ -500,7 +534,7 @@ export default function ProductDetailPage() {
               <button
                 type="button"
                 className="btn btn--outline btn--sm"
-                onClick={() => setShowReviewModal(true)}
+                onClick={handleOpenReviewModal}
               >
                 Rate this Dessert →
               </button>
@@ -550,7 +584,7 @@ export default function ProductDetailPage() {
               </h2>
             </div>
 
-            <div className="favourites__grid">
+            <div className="fav-grid">
               {relatedProducts.map((rel) => (
                 <article
                   key={rel.id}
@@ -595,6 +629,7 @@ export default function ProductDetailPage() {
       {showReviewModal && product && (
         <ReviewModal
           product={product}
+          customer={customer}
           onClose={() => setShowReviewModal(false)}
           onReviewSubmitted={() => {
             // Reload product data to refresh reviews and rating count

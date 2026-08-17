@@ -1,6 +1,6 @@
 import express from 'express'
 import crypto from 'node:crypto'
-import { Category, Product, ProductReview } from '../models/index.js'
+import { Category, Product, ProductReview, Order, OrderItem, Customer } from '../models/index.js'
 
 const router = express.Router()
 
@@ -30,21 +30,22 @@ router.get('/', async (req, res) => {
     reviewStats.forEach((r) => {
       statsMap[r._id] = {
         count: r.review_count,
-        rating: Number(Number(r.avg_rating).toFixed(1)),
+        rating: Number(r.avg_rating.toFixed(1)),
       }
     })
 
     res.json({
-      categories: categories.map((cat) => ({
-        id: cat.id,
-        slug: cat.slug,
-        name: cat.name,
-        color: cat.color,
-        count: products.filter((p) => p.category_id === cat.id && p.is_available === 1).length,
+      categories: categories.map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        color: c.color,
+        sortOrder: c.sort_order,
       })),
       products: products.map((p) => {
-        const stats = statsMap[p.id] || { count: 0, rating: 5.0 }
         const cInfo = catMap[p.category_id] || { name: 'Desserts', slug: 'desserts' }
+        const stats = statsMap[p.id] || { count: 0, rating: 5.0 }
+
         return {
           id: p.id,
           categoryId: p.category_id,
@@ -69,6 +70,75 @@ router.get('/', async (req, res) => {
           reviewCount: stats.count,
         }
       }),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Check if a customer is eligible to review a product (Strictly only after ordering)
+router.get('/:id/review-eligibility', async (req, res) => {
+  try {
+    const productId = req.params.id
+    const customerId = req.query.customerId || null
+    const customerMobile = req.query.customerMobile || null
+
+    if (!customerId && !customerMobile) {
+      return res.json({
+        canReview: false,
+        reason: 'LOGIN_REQUIRED',
+        message: 'Please sign in to your account to review desserts you have ordered.',
+      })
+    }
+
+    // Find non-cancelled orders for this customer
+    const query = { status: { $ne: 'CANCELLED' } }
+    if (customerId && customerMobile) {
+      query.$or = [{ customer_id: customerId }, { customer_mobile: customerMobile }]
+    } else if (customerId) {
+      query.customer_id = customerId
+    } else {
+      query.customer_mobile = customerMobile
+    }
+
+    const orders = await Order.find(query).select('id order_number status created_at').lean()
+    if (!orders || orders.length === 0) {
+      return res.json({
+        canReview: false,
+        reason: 'NO_ORDERS',
+        message: 'Only customers who have ordered this confectionery can write a review. Please order this item first!',
+      })
+    }
+
+    const orderIds = orders.map((o) => o.id)
+    const purchasedItem = await OrderItem.findOne({
+      order_id: { $in: orderIds },
+      product_id: productId,
+    }).lean()
+
+    if (!purchasedItem) {
+      return res.json({
+        canReview: false,
+        reason: 'NOT_PURCHASED',
+        message: 'You have not ordered this dessert yet. Only customers who have ordered this item can leave a review.',
+      })
+    }
+
+    // Check if review already exists
+    const existingReview = await ProductReview.findOne({
+      product_id: productId,
+      $or: [
+        { customer_id: customerId },
+        { customer_name: { $regex: new RegExp(`^${customerMobile}$`, 'i') } },
+      ],
+    }).lean()
+
+    res.json({
+      canReview: true,
+      hasPurchased: true,
+      alreadyReviewed: Boolean(existingReview),
+      existingReview: existingReview || null,
+      eligibleOrderId: purchasedItem.order_id,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -132,11 +202,11 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// Add a product review & rating
+// Add a product review & rating (STRICTLY ONLY AFTER ORDERING)
 router.post('/:id/reviews', async (req, res) => {
   try {
     const productId = req.params.id
-    const { rating, reviewText, customerName, customerId, orderId } = req.body
+    const { rating, reviewText, customerName, customerId, customerMobile, orderId } = req.body
 
     const numRating = parseInt(rating, 10)
     if (!numRating || numRating < 1 || numRating > 5) {
@@ -147,14 +217,61 @@ router.post('/:id/reviews', async (req, res) => {
       return res.status(400).json({ error: 'Customer name is required.' })
     }
 
+    if (!customerId && !customerMobile && !orderId) {
+      return res.status(403).json({
+        error: 'Only customers who have placed an order for this confectionery can write a review. Please sign in to submit your review.',
+      })
+    }
+
+    // Strict Verification: Confirm customer ordered this product
+    let verifiedOrder = null
+
+    if (orderId) {
+      const order = await Order.findOne({ id: orderId, status: { $ne: 'CANCELLED' } }).lean()
+      if (order) {
+        const itemExists = await OrderItem.exists({ order_id: orderId, product_id: productId })
+        if (itemExists) verifiedOrder = order
+      }
+    }
+
+    if (!verifiedOrder) {
+      const query = { status: { $ne: 'CANCELLED' } }
+      if (customerId && customerMobile) {
+        query.$or = [{ customer_id: customerId }, { customer_mobile: customerMobile }]
+      } else if (customerId) {
+        query.customer_id = customerId
+      } else if (customerMobile) {
+        query.customer_mobile = customerMobile
+      }
+
+      const orders = await Order.find(query).select('id').lean()
+      if (orders && orders.length > 0) {
+        const orderIds = orders.map((o) => o.id)
+        const purchasedItem = await OrderItem.findOne({
+          order_id: { $in: orderIds },
+          product_id: productId,
+        }).lean()
+
+        if (purchasedItem) {
+          verifiedOrder = orders.find((o) => o.id === purchasedItem.order_id)
+        }
+      }
+    }
+
+    if (!verifiedOrder) {
+      return res.status(403).json({
+        error: 'Verified Order Required: You can only review confectioneries that you have ordered and tasted. Please place an order for this dessert first!',
+      })
+    }
+
     const reviewId = `rev_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
     const now = new Date().toISOString()
 
     const review = await ProductReview.create({
       id: reviewId,
       product_id: productId,
-      order_id: orderId || null,
-      customer_id: customerId || 'guest',
+      order_id: verifiedOrder.id,
+      customer_id: customerId || 'verified_buyer',
       customer_name: customerName.trim(),
       rating: numRating,
       review_text: (reviewText || '').trim(),
@@ -164,7 +281,7 @@ router.post('/:id/reviews', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Thank you for reviewing! Your feedback has been recorded.',
+      message: 'Thank you for reviewing! Your verified feedback has been recorded.',
       review: {
         id: reviewId,
         product_id: productId,
@@ -172,6 +289,7 @@ router.post('/:id/reviews', async (req, res) => {
         review_text: reviewText,
         customer_name: customerName.trim(),
         created_at: now,
+        is_verified: true,
       },
     })
   } catch (err) {

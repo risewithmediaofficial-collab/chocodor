@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { apiRequest } from '../api/client'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 
 export default function ReviewModal({ product, orderId, customer, onReviewSubmitted, onClose }) {
+  useBodyScrollLock(true)
   const [rating, setRating] = useState(5)
   const [hoverRating, setHoverRating] = useState(0)
   const [reviewText, setReviewText] = useState('')
@@ -34,16 +36,17 @@ export default function ReviewModal({ product, orderId, customer, onReviewSubmit
           rating,
           reviewText,
           customerName: customerName.trim(),
-          customerId: customer?.id || 'guest',
+          customerId: customer?.id || null,
+          customerMobile: customer?.mobile || null,
           orderId: orderId || null,
         },
       })
 
       if (onReviewSubmitted) onReviewSubmitted(res.review)
-      alert('✓ Thank you! Your review and rating have been recorded.')
+      alert('✓ Thank you! Your verified review and rating have been recorded.')
       onClose()
     } catch (err) {
-      setError(err.message || 'Failed to submit review.')
+      setError(err.message || 'Failed to submit review. Verified purchase required.')
     } finally {
       setSubmitting(false)
     }
@@ -60,7 +63,7 @@ export default function ReviewModal({ product, orderId, customer, onReviewSubmit
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
             <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--caramel)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Product Review
+              Verified Customer Review
             </span>
             <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', color: 'var(--cocoa-dark)', margin: '2px 0 0' }}>
               Rate {product?.name}
