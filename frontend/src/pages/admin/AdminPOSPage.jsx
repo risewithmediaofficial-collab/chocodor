@@ -91,8 +91,8 @@ export default function AdminPOSPage() {
 
   const setWalkInGuest = () => {
     setSelectedCustomer(null)
-    setCustomerName('Walk-in Guest')
-    setCustomerMobile('9999999999')
+    setCustomerName('')
+    setCustomerMobile('')
     setSearchResults([])
   }
 
@@ -118,6 +118,7 @@ export default function AdminPOSPage() {
   const clearCart = () => {
     setCartItems([])
     setNotes('')
+    clearCustomer()
   }
 
   const getItemQty = (productId) => {
@@ -294,13 +295,13 @@ export default function AdminPOSPage() {
               <div style={{ background: '#E2F0E6', color: '#2E6F40', padding: '10px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 800 }}>
                 ✓ Existing Member: {selectedCustomer.royalty_id} ({selectedCustomer.current_points} pts)
               </div>
-            ) : customerMobile.replace(/\D/g, '').length === 10 ? (
+            ) : (customerMobile.replace(/\D/g, '').length === 10 && customerMobile.replace(/\D/g, '') !== '9999999999') ? (
               <div style={{ background: '#FAF0E4', color: '#B37B24', padding: '10px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 800 }}>
                 ✨ New Customer: Account auto-created! (Login Password = Mobile No.)
               </div>
             ) : (
               <div style={{ color: 'var(--text-muted)', fontSize: '12px', padding: '10px 0' }}>
-                Fill details to credit points
+                Walk-in guest (leave empty) or enter mobile number to earn Royalty Points
               </div>
             )}
           </div>
