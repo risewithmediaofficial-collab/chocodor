@@ -241,6 +241,11 @@ router.post('/change-password', authMiddleware, async (req, res) => {
       success: true,
       message: 'Password changed successfully! You can now log in with your new password.',
     })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Update Profile (Name & Mobile)
 router.post('/update-profile', authMiddleware, async (req, res) => {
   try {
