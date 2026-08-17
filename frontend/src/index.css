@@ -4003,6 +4003,119 @@ body.modal-open {
   }
 }
 
+/* ─── Category Filter Pills & POS Menu Chips ─── */
+
+.category-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 0;
+  margin: 0 auto;
+}
+
+.category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cocoa);
+  background: var(--white);
+  border: 1px solid rgba(61, 37, 30, 0.15);
+  box-shadow: 0 2px 8px rgba(43, 23, 18, 0.04);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.25s var(--ease);
+}
+
+.category-pill:hover {
+  border-color: var(--caramel);
+  color: var(--cocoa-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(43, 23, 18, 0.08);
+}
+
+.category-pill--active {
+  background: var(--gold);
+  color: var(--cocoa-dark);
+  border-color: var(--gold);
+  box-shadow: var(--shadow-gold);
+}
+
+.category-pill--active:hover {
+  background: var(--gold-hover);
+  border-color: var(--gold-hover);
+  color: var(--cocoa-dark);
+}
+
+/* POS Category Chips Bar */
+.pos-category-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0 10px;
+  margin-bottom: 16px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  align-items: center;
+}
+
+.pos-category-bar::-webkit-scrollbar {
+  height: 5px;
+}
+
+.pos-category-bar::-webkit-scrollbar-track {
+  background: rgba(61, 37, 30, 0.05);
+  border-radius: 4px;
+}
+
+.pos-category-bar::-webkit-scrollbar-thumb {
+  background: rgba(61, 37, 30, 0.25);
+  border-radius: 4px;
+}
+
+.pos-category-chip {
+  flex-shrink: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cocoa);
+  background: #FFFFFF;
+  border: 1.5px solid rgba(61, 37, 30, 0.15);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(43, 23, 18, 0.04);
+}
+
+.pos-category-chip:hover {
+  border-color: var(--caramel);
+  color: var(--cocoa-dark);
+  background: #FAF6F0;
+  transform: translateY(-1px);
+}
+
+.pos-category-chip--active {
+  background: var(--gold) !important;
+  color: var(--cocoa-dark) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 4px 14px rgba(240, 193, 75, 0.4) !important;
+}
+
+
 
 
 

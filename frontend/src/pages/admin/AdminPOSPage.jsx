@@ -349,12 +349,11 @@ export default function AdminPOSPage() {
             </div>
           </div>
 
-          {/* Category Chips */}
-          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '14px', scrollbarWidth: 'none' }}>
+          {/* Category Chips Bar */}
+          <div className="pos-category-bar">
             <button
               type="button"
-              className={`btn btn--sm ${activeCategory === 'ALL' ? 'btn--gold' : 'btn--outline'}`}
-              style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+              className={`pos-category-chip ${activeCategory === 'ALL' ? 'pos-category-chip--active' : ''}`}
               onClick={() => setActiveCategory('ALL')}
             >
               All Items ({filteredProducts.length})
@@ -363,8 +362,7 @@ export default function AdminPOSPage() {
               <button
                 key={c.id}
                 type="button"
-                className={`btn btn--sm ${activeCategory === c.slug || activeCategory === c.id ? 'btn--gold' : 'btn--outline'}`}
-                style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                className={`pos-category-chip ${activeCategory === c.slug || activeCategory === c.id ? 'pos-category-chip--active' : ''}`}
                 onClick={() => setActiveCategory(c.slug || c.id)}
               >
                 {c.name}
