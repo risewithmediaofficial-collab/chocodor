@@ -566,19 +566,6 @@ export default function AccountPage() {
               </div>
             </div>
 
-            {/* QR Code Identification */}
-            {cardData?.qrCode && (
-              <div style={{ background: '#FFFFFF', maxWidth: '360px', margin: '0 auto 40px', padding: '24px', borderRadius: '24px', border: '1px solid rgba(61,37,30,0.1)', boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
-                <h4 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--cocoa-dark)', margin: '0 0 12px' }}>
-                  Member Digital Pass
-                </h4>
-                <img src={cardData.qrCode} alt="Royalty Member QR Code" style={{ width: '180px', height: '180px', margin: '0 auto', display: 'block' }} />
-                <p style={{ margin: '12px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-                  Scan at our Krishnagiri boutique to earn &amp; redeem points in person.
-                </p>
-              </div>
-            )}
-
             {/* Stats */}
             <div className="brand-craft__left-grid" style={{ maxWidth: '780px', margin: '0 auto' }}>
               <div className="brand-craft__mini-card brand-craft__mini-card--cream">
