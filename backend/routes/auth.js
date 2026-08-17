@@ -241,6 +241,31 @@ router.post('/change-password', authMiddleware, async (req, res) => {
       success: true,
       message: 'Password changed successfully! You can now log in with your new password.',
     })
+// Update Profile (Name & Mobile)
+router.post('/update-profile', authMiddleware, async (req, res) => {
+  try {
+    const { name, mobile, email } = req.body
+    if (!name) return res.status(400).json({ error: 'Name is required' })
+
+    const updates = { name: name.trim() }
+    if (mobile) updates.mobile = mobile.trim()
+    if (email) updates.email = email.trim().toLowerCase()
+
+    await Customer.updateOne({ id: req.user.id }, updates)
+    const customer = await Customer.findOne({ id: req.user.id }).lean()
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully!',
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        mobile: customer.mobile,
+        savedAddresses: customer.saved_addresses || [],
+        createdAt: customer.created_at,
+      },
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

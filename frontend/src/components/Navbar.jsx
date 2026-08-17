@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { formatPrice } from '../data/content'
 import logoImg from '../assets/logo.jpg'
 
@@ -12,12 +13,7 @@ export default function Navbar() {
   const { items, totalCount, updateQuantity, removeFromCart, quote, cartDrawerOpen, setCartDrawerOpen } = useCart()
   const navigate = useNavigate()
 
-  useEffect(() => {
-    document.body.style.overflow = menuOpen || cartDrawerOpen ? 'hidden' : ''
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [menuOpen, cartDrawerOpen])
+  useBodyScrollLock(menuOpen || cartDrawerOpen)
 
   const links = [
     { label: 'Home', to: '/' },

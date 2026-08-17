@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useCart } from '../context/CartContext'
 import { apiRequest } from '../api/client'
 import { formatPrice } from '../data/content'
 import { useMouseTilt } from '../hooks/useMouseTilt'
 import ReviewModal from '../components/ReviewModal'
+import InvoiceModal from '../components/InvoiceModal'
 
 export default function AccountPage() {
   const { customer, royalty, logout, openLogin, refreshProfile } = useAuth()
+  const { addToCart, setCartDrawerOpen } = useCart()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') || 'orders'
+  const [orderFilter, setOrderFilter] = useState('ALL') // 'ALL' | 'ACTIVE' | 'COMPLETED'
 
   const [orders, setOrders] = useState([])
   const [cardData, setCardData] = useState(null)
@@ -18,7 +22,15 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true)
   const [actionMsg, setActionMsg] = useState('')
   const [reviewModalItem, setReviewModalItem] = useState(null)
+  const [selectedInvoiceOrderId, setSelectedInvoiceOrderId] = useState(null)
   const [reviewedProductMap, setReviewedProductMap] = useState({})
+
+  // Profile Edit State
+  const [profileName, setProfileName] = useState(customer?.name || '')
+  const [profileMobile, setProfileMobile] = useState(customer?.mobile || '')
+  const [profileEmail, setProfileEmail] = useState(customer?.email || '')
+  const [profileMsg, setProfileMsg] = useState(null)
+  const [profileSaving, setProfileSaving] = useState(false)
 
   // Password Change State
   const [currentPassword, setCurrentPassword] = useState('')
@@ -26,6 +38,33 @@ export default function AccountPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwdMsg, setPwdMsg] = useState(null)
   const [pwdSubmitting, setPwdSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (customer) {
+      setProfileName(customer.name || '')
+      setProfileMobile(customer.mobile || '')
+      setProfileEmail(customer.email || '')
+    }
+  }, [customer])
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault()
+    setProfileMsg(null)
+    setProfileSaving(true)
+
+    try {
+      const res = await apiRequest('/auth/update-profile', {
+        method: 'POST',
+        body: { name: profileName, mobile: profileMobile, email: profileEmail },
+      })
+      setProfileMsg({ type: 'success', text: res.message || 'Profile updated successfully!' })
+      await refreshProfile()
+    } catch (err) {
+      setProfileMsg({ type: 'error', text: err.message || 'Failed to update profile' })
+    } finally {
+      setProfileSaving(false)
+    }
+  }
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
@@ -56,6 +95,23 @@ export default function AccountPage() {
     } finally {
       setPwdSubmitting(false)
     }
+  }
+
+  const handleReorder = (order) => {
+    if (!order.items || order.items.length === 0) return
+    order.items.forEach((item) => {
+      addToCart({
+        id: item.product_id,
+        productId: item.product_id,
+        name: item.product_name_snapshot,
+        price: item.unit_price_snapshot || item.price,
+        image: item.image || '/images/products/lalban-hazelnut.jpg',
+        royaltyPoints: item.royalty_points_snapshot || 0,
+      }, item.quantity)
+    })
+    setCartDrawerOpen(true)
+    setActionMsg(`🛒 Added items from order ${order.order_number} to your bag!`)
+    setTimeout(() => setActionMsg(''), 4000)
   }
 
   const { ref: cardRef, handleMove, handleLeave } = useMouseTilt(8)
@@ -213,9 +269,98 @@ export default function AccountPage() {
           </div>
         )}
 
-        {/* TAB 1: MY ORDERS */}
+        {/* TAB 1: MY ORDERS & REAL-TIME TRACKING */}
         {activeTab === 'orders' && (
           <div style={{ marginTop: '28px' }}>
+            {/* Real-Time Active Order Spotlight Banner */}
+            {orders.some((o) => !['COMPLETED', 'DELIVERED', 'CANCELLED', 'REJECTED'].includes(o.status)) && (
+              (() => {
+                const activeOrd = orders.find((o) => !['COMPLETED', 'DELIVERED', 'CANCELLED', 'REJECTED'].includes(o.status))
+                return (
+                  <div
+                    style={{
+                      background: 'linear-gradient(135deg, var(--cocoa-dark), #1A0D09)',
+                      color: '#FFFFFF',
+                      padding: '24px',
+                      borderRadius: '20px',
+                      marginBottom: '28px',
+                      boxShadow: '0 8px 32px rgba(43, 23, 18, 0.35)',
+                      border: '1px solid rgba(240, 193, 75, 0.35)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className="pulse-indicator" style={{ width: '10px', height: '10px', background: '#48BB78' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          LIVE ACTIVE ORDER • {activeOrd.order_number}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '12.5px', color: 'rgba(250,246,240,0.8)' }}>
+                        Status: <strong style={{ color: 'var(--gold)' }}>{activeOrd.status.replace(/_/g, ' ')}</strong>
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 900, color: '#FFFFFF' }}>
+                          {activeOrd.order_type === 'DELIVERY' ? '🛵 Preparing for Fresh Delivery' : '🏪 Freshly Baking for Boutique Pickup'}
+                        </div>
+                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'rgba(250,246,240,0.7)' }}>
+                          {activeOrd.items?.length || 0} confectioneries • Total: {formatPrice(activeOrd.total_amount)} • +{activeOrd.total_royalty_points} Points
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn--outline btn--sm"
+                          style={{ color: '#FFFFFF', borderColor: 'rgba(255,255,255,0.3)', padding: '8px 16px' }}
+                          onClick={() => setSelectedInvoiceOrderId(activeOrd.id)}
+                        >
+                          📄 View Bill
+                        </button>
+                        <Link
+                          to={`/orders/${activeOrd.order_number}`}
+                          className="btn btn--gold btn--sm"
+                          style={{ padding: '8px 20px', fontWeight: 800 }}
+                        >
+                          Track Real-Time Status →
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()
+            )}
+
+            {/* Order Filter Pills */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={`account-tab ${orderFilter === 'ALL' ? 'account-tab--active' : ''}`}
+                style={{ padding: '6px 16px', fontSize: '12px' }}
+                onClick={() => setOrderFilter('ALL')}
+              >
+                All Orders ({orders.length})
+              </button>
+              <button
+                type="button"
+                className={`account-tab ${orderFilter === 'ACTIVE' ? 'account-tab--active' : ''}`}
+                style={{ padding: '6px 16px', fontSize: '12px' }}
+                onClick={() => setOrderFilter('ACTIVE')}
+              >
+                Active ({orders.filter((o) => !['COMPLETED', 'DELIVERED', 'CANCELLED', 'REJECTED'].includes(o.status)).length})
+              </button>
+              <button
+                type="button"
+                className={`account-tab ${orderFilter === 'COMPLETED' ? 'account-tab--active' : ''}`}
+                style={{ padding: '6px 16px', fontSize: '12px' }}
+                onClick={() => setOrderFilter('COMPLETED')}
+              >
+                Delivered / Completed ({orders.filter((o) => ['COMPLETED', 'DELIVERED'].includes(o.status)).length})
+              </button>
+            </div>
+
             {loading ? (
               <p style={{ textAlign: 'center', padding: '40px' }}>Loading your orders...</p>
             ) : orders.length === 0 ? (
@@ -231,7 +376,13 @@ export default function AccountPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {orders.map((ord) => (
+                {orders
+                  .filter((ord) => {
+                    if (orderFilter === 'ACTIVE') return !['COMPLETED', 'DELIVERED', 'CANCELLED', 'REJECTED'].includes(ord.status)
+                    if (orderFilter === 'COMPLETED') return ['COMPLETED', 'DELIVERED'].includes(ord.status)
+                    return true
+                  })
+                  .map((ord) => (
                   <div key={ord.id} className="order-card-customer">
                     <div className="order-card-customer__header">
                       <div>
@@ -286,7 +437,7 @@ export default function AccountPage() {
                         Ordered Confectioneries ({ord.items?.length || 0} items):
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
                         {ord.items?.map((item) => {
                           const existingRating = reviewedProductMap[`${item.product_id}_${ord.id}`] || reviewedProductMap[item.product_id]
 
@@ -301,6 +452,8 @@ export default function AccountPage() {
                                 padding: '8px 14px',
                                 borderRadius: '12px',
                                 fontSize: '13px',
+                                gap: '10px',
+                                flexWrap: 'wrap',
                               }}
                             >
                               <div>
@@ -336,9 +489,30 @@ export default function AccountPage() {
                         })}
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <Link to={`/orders/${ord.order_number}`} className="btn btn--outline btn--sm">
-                          View Live Tracking &amp; Bill →
+                      {/* Order Action Buttons */}
+                      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn--outline btn--sm"
+                          style={{ fontSize: '12px', padding: '6px 14px' }}
+                          onClick={() => setSelectedInvoiceOrderId(ord.id)}
+                        >
+                          📄 Tax Invoice
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--outline btn--sm"
+                          style={{ fontSize: '12px', padding: '6px 14px' }}
+                          onClick={() => handleReorder(ord)}
+                        >
+                          ↻ Reorder Items
+                        </button>
+                        <Link
+                          to={`/orders/${ord.order_number}`}
+                          className="btn btn--gold btn--sm"
+                          style={{ fontSize: '12px', padding: '6px 16px', fontWeight: 800 }}
+                        >
+                          🚚 Track Order →
                         </Link>
                       </div>
                     </div>
@@ -546,29 +720,86 @@ export default function AccountPage() {
 
         {/* TAB 5: PROFILE & SECURITY */}
         {activeTab === 'profile' && (
-          <div style={{ marginTop: '28px', maxWidth: '640px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ marginTop: '28px', maxWidth: '640px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {/* Edit Profile Form */}
             <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--cocoa-dark)', marginBottom: '16px' }}>
-                👤 Customer Information
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Full Name: </span>
-                  <strong>{customer.name}</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Mobile Number: </span>
-                  <strong>{customer.mobile}</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Email: </span>
-                  <strong>{customer.email}</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Royalty ID: </span>
-                  <strong style={{ color: 'var(--caramel)' }}>{royalty?.royaltyId}</strong>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--cocoa-dark)', margin: 0 }}>
+                  👤 Edit Profile Information
+                </h3>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--caramel)', background: '#FAF0E4', padding: '4px 10px', borderRadius: 'var(--radius-pill)' }}>
+                  👑 {royalty?.royaltyId || 'ROYALTY MEMBER'}
+                </span>
               </div>
+
+              {profileMsg && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    marginBottom: '14px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    background: profileMsg.type === 'success' ? '#E2F0E6' : '#FDE8E8',
+                    color: profileMsg.type === 'success' ? '#2E6F40' : '#BA1B1B',
+                  }}
+                >
+                  {profileMsg.text}
+                </div>
+              )}
+
+              <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="Your Full Name"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px', background: '#FAF6F0' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                    Mobile Number * (For Delivery &amp; Points)
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={profileMobile}
+                    onChange={(e) => setProfileMobile(e.target.value)}
+                    placeholder="Your 10-digit mobile number"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px', background: '#FAF6F0' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                    Email Address * (For Invoices &amp; Recovery)
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={profileEmail}
+                    onChange={(e) => setProfileEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px', background: '#FAF6F0' }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="btn btn--gold btn--sm"
+                  style={{ alignSelf: 'flex-start', padding: '10px 20px', marginTop: '4px', fontWeight: 800 }}
+                >
+                  {profileSaving ? 'Saving Changes...' : 'Save Profile Changes →'}
+                </button>
+              </form>
             </div>
 
             {/* Change Password Form */}
@@ -607,7 +838,7 @@ export default function AccountPage() {
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     placeholder="Enter current password or mobile number"
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px' }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px', background: '#FAF6F0' }}
                   />
                 </div>
 
@@ -622,7 +853,7 @@ export default function AccountPage() {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Enter new secure password"
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px' }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px', background: '#FAF6F0' }}
                   />
                 </div>
 
@@ -637,7 +868,7 @@ export default function AccountPage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px' }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '14px', background: '#FAF6F0' }}
                   />
                 </div>
 
@@ -645,7 +876,7 @@ export default function AccountPage() {
                   type="submit"
                   disabled={pwdSubmitting}
                   className="btn btn--gold btn--sm"
-                  style={{ alignSelf: 'flex-start', padding: '10px 20px', marginTop: '4px' }}
+                  style={{ alignSelf: 'flex-start', padding: '10px 20px', marginTop: '4px', fontWeight: 800 }}
                 >
                   {pwdSubmitting ? 'Updating Password...' : 'Update Password →'}
                 </button>
@@ -670,6 +901,14 @@ export default function AccountPage() {
             }))
             setActionMsg(`⭐ Thank you for rating "${reviewModalItem.product.name}"!`)
           }}
+        />
+      )}
+
+      {/* Tax Invoice Modal */}
+      {selectedInvoiceOrderId && (
+        <InvoiceModal
+          orderId={selectedInvoiceOrderId}
+          onClose={() => setSelectedInvoiceOrderId(null)}
         />
       )}
     </main>
