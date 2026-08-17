@@ -211,9 +211,10 @@ export default function CheckoutPage() {
   }
 
   // Calculated displayed totals
-  const subtotal = quote.subtotal
+  const fallbackSubtotal = items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
+  const subtotal = quote.subtotal > 0 ? quote.subtotal : fallbackSubtotal
   const firstOrderDiscount = applyFirstOrder ? 20 : 0
-  const deliveryFee = orderType === 'DELIVERY' ? (subtotal >= 500 ? 0 : 40) : 0
+  const deliveryFee = orderType === 'DELIVERY' ? (quote.deliveryFee !== undefined ? quote.deliveryFee : (subtotal >= 500 ? 0 : 40)) : 0
   const rewardDiscount = quote.rewardDiscount || 0
   const totalPayable = Math.max(0, subtotal - firstOrderDiscount - rewardDiscount) + deliveryFee
 

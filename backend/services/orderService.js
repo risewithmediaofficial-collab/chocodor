@@ -72,6 +72,7 @@ export async function calculateOrderQuote({
   customerMobile = null,
   appliedRewardCode = null,
   applyFirstOrderOffer = false,
+  strictRewardValidation = false,
 }) {
   if (!items || items.length === 0) {
     throw new Error('Order items list cannot be empty')
@@ -89,7 +90,7 @@ export async function calculateOrderQuote({
 
     const quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
     const itemSubtotal = product.price * quantity
-    const itemPoints = product.royalty_points * quantity
+    const itemPoints = (product.royalty_points || 0) * quantity
 
     subtotal += itemSubtotal
     totalRoyaltyPoints += itemPoints
@@ -98,7 +99,7 @@ export async function calculateOrderQuote({
       productId: product.id,
       name: product.name,
       unitPrice: product.price,
-      royaltyPointsPerUnit: product.royalty_points,
+      royaltyPointsPerUnit: product.royalty_points || 0,
       quantity,
       subtotal: itemSubtotal,
       totalPoints: itemPoints,
@@ -120,32 +121,35 @@ export async function calculateOrderQuote({
   let firstOrderDiscount = 0
   const firstOrderCheck = await checkFirstOrderEligibility(customerId, customerMobile)
   if (applyFirstOrderOffer && firstOrderCheck.eligible) {
-    firstOrderDiscount = firstOrderCheck.discount
+    firstOrderDiscount = firstOrderCheck.discount || 20
   }
 
   // Reward coupon discount evaluation
   let rewardDiscount = 0
   let rewardData = null
+  let rewardError = null
+
   if (appliedRewardCode) {
+    const cleanCode = appliedRewardCode.trim().toUpperCase()
     const redemption = await RewardRedemption.findOne({
-      redemption_code: appliedRewardCode,
+      redemption_code: cleanCode,
       is_used: 0,
     }).lean()
 
     if (!redemption) {
-      throw new Error('Invalid or already used reward code')
+      rewardError = 'Invalid or already used reward coupon code'
+    } else if (new Date(redemption.expires_at) < new Date()) {
+      rewardError = 'This reward coupon has expired'
+    } else if (subtotal < (redemption.min_order_value || 0)) {
+      rewardError = `Minimum order value of ₹${redemption.min_order_value} required for this coupon`
+    } else {
+      rewardDiscount = redemption.discount_value || 0
+      rewardData = redemption
     }
 
-    if (new Date(redemption.expires_at) < new Date()) {
-      throw new Error('Reward coupon has expired')
+    if (strictRewardValidation && rewardError) {
+      throw new Error(rewardError)
     }
-
-    if (subtotal < redemption.min_order_value) {
-      throw new Error(`Minimum order value of ₹${redemption.min_order_value} required for this reward`)
-    }
-
-    rewardDiscount = redemption.discount_value
-    rewardData = redemption
   }
 
   const discountedSubtotal = Math.max(0, subtotal - firstOrderDiscount - rewardDiscount)
@@ -158,9 +162,11 @@ export async function calculateOrderQuote({
     firstOrderDiscount,
     rewardDiscount,
     rewardData,
+    rewardError,
     grandTotal,
     totalRoyaltyPoints,
     firstOrderEligible: firstOrderCheck.eligible,
+    eligibleForFreeDelivery: deliveryFee === 0 && orderType === 'DELIVERY',
   }
 }
 
@@ -194,6 +200,7 @@ export async function createOrder({
     customerMobile,
     appliedRewardCode,
     applyFirstOrderOffer,
+    strictRewardValidation: true,
   })
 
   const orderId = `ord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`

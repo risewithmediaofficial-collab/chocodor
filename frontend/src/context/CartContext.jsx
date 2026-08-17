@@ -62,6 +62,19 @@ export function CartProvider({ children }) {
       setQuote(res)
     } catch (err) {
       console.error('Quote fetch failed:', err)
+      const fallbackSubtotal = items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
+      const fallbackPoints = items.reduce((sum, item) => sum + (item.royaltyPoints || item.royalty_points || 0) * (item.quantity || 1), 0)
+      const fallbackDelivery = orderType === 'DELIVERY' ? (fallbackSubtotal >= 500 ? 0 : 40) : 0
+      setQuote((prev) => ({
+        ...prev,
+        subtotal: fallbackSubtotal,
+        deliveryFee: fallbackDelivery,
+        rewardDiscount: 0,
+        rewardError: err.message || 'Could not verify coupon',
+        grandTotal: fallbackSubtotal + fallbackDelivery,
+        totalRoyaltyPoints: fallbackPoints,
+        eligibleForFreeDelivery: fallbackDelivery === 0,
+      }))
     } finally {
       setQuoteLoading(false)
     }
