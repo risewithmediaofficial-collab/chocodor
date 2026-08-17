@@ -185,7 +185,7 @@ export default function AccountPage() {
           <p style={{ color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 24px' }}>
             Please sign in to view your orders, digital Royalty Card, point ledger, and rewards.
           </p>
-          <button type="button" className="btn btn--gold" onClick={openLogin}>
+          <button type="button" className="btn btn--gold" onClick={() => openLogin()}>
             Sign In / Register →
           </button>
         </div>

@@ -99,7 +99,7 @@ export default function AuthModal() {
             </div>
 
             {/* Context Notice / Reason */}
-            {authReason && (
+            {typeof authReason === 'string' && authReason.trim().length > 0 && (
               <div
                 style={{
                   background: '#FAF0E4',

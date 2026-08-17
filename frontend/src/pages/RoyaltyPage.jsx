@@ -183,7 +183,7 @@ export default function RoyaltyPage() {
                     <button
                       type="button"
                       className="btn btn--gold btn--full"
-                      onClick={openLogin}
+                      onClick={() => openLogin()}
                     >
                       Sign In to Redeem
                     </button>

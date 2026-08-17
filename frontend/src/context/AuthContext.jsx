@@ -91,14 +91,16 @@ export function AuthProvider({ children }) {
 
   const openLogin = (reason = '', onComplete = null) => {
     setAuthMode('login')
-    setAuthReason(reason || '')
+    const safeReason = typeof reason === 'string' ? reason : ''
+    setAuthReason(safeReason)
     setPendingAction(typeof onComplete === 'function' ? () => onComplete : null)
     setAuthModalOpen(true)
   }
 
   const openRegister = (reason = '', onComplete = null) => {
     setAuthMode('register')
-    setAuthReason(reason || '')
+    const safeReason = typeof reason === 'string' ? reason : ''
+    setAuthReason(safeReason)
     setPendingAction(typeof onComplete === 'function' ? () => onComplete : null)
     setAuthModalOpen(true)
   }

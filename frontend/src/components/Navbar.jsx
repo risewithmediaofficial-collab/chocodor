@@ -72,7 +72,7 @@ export default function Navbar() {
               <button
                 type="button"
                 className="btn btn--outline btn--sm"
-                onClick={openLogin}
+                onClick={() => openLogin()}
               >
                 Sign In
               </button>
