@@ -12,9 +12,11 @@ export default function FavouritesSection() {
 
   const handleAddToCart = (product, e) => {
     e.stopPropagation()
-    addToCart(product, 1)
-    setAddedId(product.id)
-    setTimeout(() => setAddedId(null), 1800)
+    const success = addToCart(product, 1)
+    if (success) {
+      setAddedId(product.id)
+      setTimeout(() => setAddedId(null), 1800)
+    }
   }
 
   return (

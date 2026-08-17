@@ -8,7 +8,9 @@ export function AuthProvider({ children }) {
   const [royalty, setRoyalty] = useState(null)
   const [loading, setLoading] = useState(true)
   const [authModalOpen, setAuthModalOpen] = useState(false)
-  const [authMode, setAuthMode] = useState('login') // 'login' | 'register'
+  const [authMode, setAuthMode] = useState('register') // 'login' | 'register'
+  const [authReason, setAuthReason] = useState('')
+  const [pendingAction, setPendingAction] = useState(null)
 
   const refreshProfile = useCallback(async () => {
     const token = localStorage.getItem('chocodor_cust_token')
@@ -46,6 +48,16 @@ export function AuthProvider({ children }) {
     setCustomer(res.customer)
     setRoyalty(res.royalty)
     setAuthModalOpen(false)
+    
+    if (typeof pendingAction === 'function') {
+      try {
+        pendingAction(res.customer)
+      } catch (e) {
+        console.error('Pending action execution failed:', e)
+      }
+      setPendingAction(null)
+    }
+    setAuthReason('')
     return res
   }
 
@@ -58,6 +70,16 @@ export function AuthProvider({ children }) {
     setCustomer(res.customer)
     setRoyalty(res.royalty)
     setAuthModalOpen(false)
+
+    if (typeof pendingAction === 'function') {
+      try {
+        pendingAction(res.customer)
+      } catch (e) {
+        console.error('Pending action execution failed:', e)
+      }
+      setPendingAction(null)
+    }
+    setAuthReason('')
     return res
   }
 
@@ -67,14 +89,24 @@ export function AuthProvider({ children }) {
     setRoyalty(null)
   }
 
-  const openLogin = () => {
+  const openLogin = (reason = '', onComplete = null) => {
     setAuthMode('login')
+    setAuthReason(reason || '')
+    setPendingAction(typeof onComplete === 'function' ? () => onComplete : null)
     setAuthModalOpen(true)
   }
 
-  const openRegister = () => {
+  const openRegister = (reason = '', onComplete = null) => {
     setAuthMode('register')
+    setAuthReason(reason || '')
+    setPendingAction(typeof onComplete === 'function' ? () => onComplete : null)
     setAuthModalOpen(true)
+  }
+
+  const closeAuthModal = () => {
+    setAuthModalOpen(false)
+    setPendingAction(null)
+    setAuthReason('')
   }
 
   return (
@@ -91,8 +123,10 @@ export function AuthProvider({ children }) {
         setAuthModalOpen,
         authMode,
         setAuthMode,
+        authReason,
         openLogin,
         openRegister,
+        closeAuthModal,
       }}
     >
       {children}

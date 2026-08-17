@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { apiRequest } from '../api/client'
 import { useCart } from '../context/CartContext'
+import { useAuth } from '../context/AuthContext'
 import { allProducts as defaultProducts, formatPrice } from '../data/content'
 import ReviewModal from '../components/ReviewModal'
 
@@ -10,6 +11,7 @@ export default function ProductDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { addToCart } = useCart()
+  const { customer, openRegister } = useAuth()
 
   const fallbackProduct = defaultProducts.find((p) => p.id === id || p.id === `p-${id}` || p.name.toLowerCase().replace(/\s+/g, '-') === id)
   const [product, setProduct] = useState(fallbackProduct || null)
@@ -25,25 +27,20 @@ export default function ProductDetailPage() {
   useEffect(() => {
     async function loadProductData() {
       try {
+        setLoading(true)
         setError(null)
-        // 1. Fetch current product
-        const prodData = await apiRequest(`/products/${id}`)
-        if (prodData && prodData.name) {
-          setProduct(prodData)
-          setSelectedImage(prodData.image)
+        const res = await apiRequest(`/products/${id}`)
+        if (res && res.product) {
+          setProduct(res.product)
+          setSelectedImage(res.product.image)
+          if (res.related && res.related.length > 0) {
+            setRelatedProducts(res.related)
+          }
         }
-        // 2. Fetch catalogue for related recommendations
-        const allData = await apiRequest('/products')
-        const allProds = allData.products || defaultProducts
-        const related = allProds
-          .filter((p) => p.id !== id && (p.categoryId === prodData?.categoryId || p.category === prodData?.category || p.isBestseller))
-          .slice(0, 4)
-        setRelatedProducts(related)
       } catch (err) {
-        console.warn('Product API notice, using cached product detail:', err.message)
-        if (!fallbackProduct) {
-          setError('Dessert not found')
-        }
+        console.warn('Backend product fetch failed, using fallback:', err)
+      } finally {
+        setLoading(false)
       }
     }
 
@@ -53,13 +50,25 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = () => {
     if (!product) return
-    addToCart(product, quantity)
-    setAddedToast(true)
-    setTimeout(() => setAddedToast(false), 2400)
+    const success = addToCart(product, quantity)
+    if (success) {
+      setAddedToast(true)
+      setTimeout(() => setAddedToast(false), 2400)
+    }
   }
 
   const handleBuyNow = () => {
     if (!product) return
+    if (!customer) {
+      openRegister(
+        'Please create an account or sign in to complete your instant checkout ✨',
+        () => {
+          addToCart(product, quantity)
+          navigate('/checkout')
+        }
+      )
+      return
+    }
     addToCart(product, quantity)
     navigate('/checkout')
   }
@@ -565,10 +574,11 @@ export default function ProductDetailPage() {
                       type="button"
                       className="fav-card__add-btn"
                       onClick={(e) => {
-                        e.stopPropagation()
-                        addToCart(rel, 1)
-                        setAddedToast(true)
-                        setTimeout(() => setAddedToast(false), 2400)
+                        const ok = addToCart(rel, 1)
+                        if (ok) {
+                          setAddedToast(true)
+                          setTimeout(() => setAddedToast(false), 2400)
+                        }
                       }}
                     >
                       + Quick Add

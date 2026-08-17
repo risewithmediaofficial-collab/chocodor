@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { apiRequest } from '../api/client'
+import { useAuth } from './AuthContext'
 
 const CartContext = createContext(null)
 
 export function CartProvider({ children }) {
+  const { customer, openRegister } = useAuth()
   const [items, setItems] = useState(() => {
     try {
       const saved = localStorage.getItem('chocodor_cart')
@@ -69,7 +71,7 @@ export function CartProvider({ children }) {
     fetchQuote()
   }, [fetchQuote])
 
-  const addToCart = (product, quantity = 1) => {
+  const executeAddToCart = (product, quantity = 1) => {
     const pId = product.productId || product.id
     setItems((prev) => {
       const existing = prev.find((i) => (i.productId || i.id) === pId)
@@ -93,6 +95,22 @@ export function CartProvider({ children }) {
         },
       ]
     })
+  }
+
+  const addToCart = (product, quantity = 1) => {
+    if (!customer) {
+      openRegister(
+        'Please create an account or sign in to add items to your cart & collect Royalty points ✨',
+        () => {
+          executeAddToCart(product, quantity)
+          setCartDrawerOpen(true)
+        }
+      )
+      return false
+    }
+
+    executeAddToCart(product, quantity)
+    return true
   }
 
   const updateQuantity = (productId, quantity) => {

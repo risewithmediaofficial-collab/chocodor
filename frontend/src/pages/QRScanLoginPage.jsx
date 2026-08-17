@@ -33,7 +33,7 @@ export default function QRScanLoginPage() {
               method: 'POST',
               body: { token },
             })
-            localStorage.setItem('chocodor_customer_token', loginRes.token)
+            localStorage.setItem('chocodor_cust_token', loginRes.token)
             localStorage.setItem('chocodor_customer_data', JSON.stringify(loginRes.customer))
             await refreshProfile()
             setTimeout(() => {
@@ -73,7 +73,7 @@ export default function QRScanLoginPage() {
         body: { token, newPassword: password },
       })
 
-      localStorage.setItem('chocodor_customer_token', res.token)
+      localStorage.setItem('chocodor_cust_token', res.token)
       localStorage.setItem('chocodor_customer_data', JSON.stringify(res.customer))
       await refreshProfile()
       navigate('/account')

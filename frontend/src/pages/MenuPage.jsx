@@ -52,9 +52,11 @@ export default function MenuPage() {
 
   const handleAdd = (product, qty = 1, e) => {
     if (e) e.stopPropagation()
-    addToCart(product, qty)
-    setAddedToast(`Added ${qty} × ${product.name} to bag!`)
-    setTimeout(() => setAddedToast(null), 2200)
+    const success = addToCart(product, qty)
+    if (success) {
+      setAddedToast(`Added ${qty} × ${product.name} to bag!`)
+      setTimeout(() => setAddedToast(null), 2200)
+    }
   }
 
   return (
