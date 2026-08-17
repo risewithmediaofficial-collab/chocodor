@@ -19,6 +19,8 @@ const ContactPage = lazy(() => import('./pages/ContactPage'))
 const DeliveryPage = lazy(() => import('./pages/DeliveryPage'))
 const OrderTrackingPage = lazy(() => import('./pages/OrderTrackingPage'))
 const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'))
+const AuthPage = lazy(() => import('./pages/AuthPage'))
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 // Lazy Loaded Admin Pages
 const AdminLoginPage = lazy(() => import('./pages/admin/AdminLoginPage'))
@@ -75,6 +77,12 @@ export default function App() {
                   <Route path="delivery" element={<DeliveryPage />} />
                   <Route path="order-tracking" element={<OrderTrackingPage />} />
                   <Route path="orders/:orderNumber" element={<OrderTrackingPage />} />
+                  <Route path="login" element={<AuthPage mode="login" />} />
+                  <Route path="signin" element={<AuthPage mode="login" />} />
+                  <Route path="register" element={<AuthPage mode="register" />} />
+                  <Route path="signup" element={<AuthPage mode="register" />} />
+                  <Route path="auth" element={<AuthPage mode="login" />} />
+                  <Route path="*" element={<NotFoundPage />} />
                 </Route>
 
                 {/* Admin & POS Portal */}
