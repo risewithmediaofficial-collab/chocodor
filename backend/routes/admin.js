@@ -28,12 +28,62 @@ import {
   WastageEntry,
   CashierShift,
   CustomerFeedback,
+  StaffAttendance,
 } from '../models/index.js'
 import { updateOrderStatus, getOrderById, getLiveOrders, settleOrderPayment } from '../services/orderService.js'
 import { manualPointAdjustment } from '../services/royaltyService.js'
 import { JWT_SECRET } from './auth.js'
 
 const router = express.Router()
+
+const DEFAULT_ROLE_PERMISSIONS = {
+  SUPER_ADMIN: ['*'],
+  ADMIN: ['dashboard', 'pos', 'orders', 'kot', 'hold-bills', 'stock', 'operations', 'products', 'customers', 'royalty', 'rewards', 'reports', 'settings', 'staff'],
+  BILLING_STAFF: ['dashboard', 'pos', 'orders', 'hold-bills'],
+  KITCHEN_STAFF: ['dashboard', 'kot', 'orders'],
+}
+
+function getEffectivePermissions(admin) {
+  if (admin.role === 'SUPER_ADMIN') return ['*']
+  if (Array.isArray(admin.permissions) && admin.permissions.length > 0) return admin.permissions
+  return DEFAULT_ROLE_PERMISSIONS[admin.role] || ['dashboard']
+}
+
+function superAdminOnly(req, res, next) {
+  if (req.admin?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Only super admin can manage staff access' })
+  }
+  next()
+}
+
+function getRoutePermission(path) {
+  if (path.startsWith('/products-daily-menu')) return 'products'
+  const segment = path.split('/').filter(Boolean)[0]
+  const map = {
+    dashboard: 'dashboard',
+    orders: 'orders',
+    kot: 'kot',
+    'hold-bills': 'hold-bills',
+    stock: 'stock',
+    operations: 'operations',
+    products: 'products',
+    customers: 'customers',
+    royalty: 'royalty',
+    rewards: 'rewards',
+    reports: 'reports',
+    settings: 'settings',
+    staff: 'staff',
+  }
+  return map[segment]
+}
+
+function enforceStaffPermission(req, res, next) {
+  const required = getRoutePermission(req.path)
+  if (!required) return next()
+  const permissions = getEffectivePermissions(req.admin || {})
+  if (permissions.includes('*') || permissions.includes(required)) return next()
+  return res.status(403).json({ error: 'Your staff login does not have access to this section' })
+}
 
 export function adminAuth(req, res, next) {
   const header = req.headers.authorization
@@ -63,12 +113,14 @@ router.post('/login', async (req, res) => {
     }
 
     const admin = await Admin.findOne({ email: email.trim().toLowerCase() })
-    if (!admin || !bcrypt.compareSync(password, admin.password_hash)) {
+    if (!admin || admin.is_active === 0 || !bcrypt.compareSync(password, admin.password_hash)) {
       return res.status(401).json({ error: 'Invalid administrator credentials' })
     }
 
+    const permissions = getEffectivePermissions(admin)
+
     const token = jwt.sign(
-      { id: admin.id, email: admin.email, name: admin.name, role: admin.role, isAdmin: true },
+      { id: admin.id, email: admin.email, name: admin.name, role: admin.role, permissions, isAdmin: true },
       JWT_SECRET,
       { expiresIn: '7d' }
     )
@@ -81,12 +133,156 @@ router.post('/login', async (req, res) => {
         name: admin.name,
         email: admin.email,
         role: admin.role,
+        phone: admin.phone || '',
+        permissions,
       },
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
+
+router.get('/staff', adminAuth, superAdminOnly, async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const [staff, attendance] = await Promise.all([
+      Admin.find().sort({ created_at: -1 }).lean(),
+      StaffAttendance.find().sort({ date: -1, created_at: -1 }).limit(120).lean(),
+    ])
+    res.json({
+      staff: staff.map((member) => ({
+        id: member.id,
+        name: member.name,
+        email: member.email,
+        phone: member.phone || '',
+        role: member.role,
+        permissions: getEffectivePermissions(member),
+        isActive: member.is_active !== 0,
+        createdAt: member.created_at,
+      })),
+      attendance,
+      today,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/staff', adminAuth, superAdminOnly, async (req, res) => {
+  try {
+    const { name, email, phone = '', password, role = 'BILLING_STAFF', permissions = [] } = req.body
+    if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' })
+
+    const cleanEmail = email.trim().toLowerCase()
+    const existing = await Admin.findOne({ email: cleanEmail })
+    if (existing) return res.status(400).json({ error: 'Staff email already exists' })
+
+    const now = new Date().toISOString()
+    const staff = await Admin.create({
+      id: `staff_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      name: name.trim(),
+      email: cleanEmail,
+      phone: phone.trim(),
+      password_hash: bcrypt.hashSync(password, 10),
+      role,
+      permissions: role === 'SUPER_ADMIN' ? ['*'] : permissions,
+      is_active: 1,
+      pin: '1234',
+      created_at: now,
+      updated_at: now,
+    })
+
+    res.status(201).json({
+      success: true,
+      staff: {
+        id: staff.id,
+        name: staff.name,
+        email: staff.email,
+        phone: staff.phone,
+        role: staff.role,
+        permissions: getEffectivePermissions(staff),
+        isActive: staff.is_active !== 0,
+      },
+    })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.patch('/staff/:id', adminAuth, superAdminOnly, async (req, res) => {
+  try {
+    const update = { updated_at: new Date().toISOString() }
+    if (req.body.name !== undefined) update.name = req.body.name.trim()
+    if (req.body.email !== undefined) update.email = req.body.email.trim().toLowerCase()
+    if (req.body.phone !== undefined) update.phone = req.body.phone.trim()
+    if (req.body.role !== undefined) update.role = req.body.role
+    if (req.body.permissions !== undefined) update.permissions = Array.isArray(req.body.permissions) ? req.body.permissions : []
+    if (req.body.isActive !== undefined) update.is_active = req.body.isActive ? 1 : 0
+    if (req.body.password) update.password_hash = bcrypt.hashSync(req.body.password, 10)
+
+    if (update.role === 'SUPER_ADMIN') update.permissions = ['*']
+
+    const staff = await Admin.findOneAndUpdate({ id: req.params.id }, update, { returnDocument: 'after' })
+    if (!staff) return res.status(404).json({ error: 'Staff not found' })
+    res.json({ success: true, staff })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.delete('/staff/:id', adminAuth, superAdminOnly, async (req, res) => {
+  try {
+    if (req.params.id === req.admin.id) return res.status(400).json({ error: 'You cannot deactivate your own login' })
+    const staff = await Admin.findOneAndUpdate({ id: req.params.id }, { is_active: 0, updated_at: new Date().toISOString() })
+    if (!staff) return res.status(404).json({ error: 'Staff not found' })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/staff/:id/attendance', adminAuth, async (req, res) => {
+  try {
+    const targetStaffId = req.params.id === 'me' ? req.admin.id : req.params.id
+    if (req.admin.role !== 'SUPER_ADMIN' && targetStaffId !== req.admin.id) {
+      return res.status(403).json({ error: 'Staff can mark only their own attendance' })
+    }
+
+    const staff = await Admin.findOne({ id: targetStaffId }).lean()
+    if (!staff) return res.status(404).json({ error: 'Staff not found' })
+
+    const { action = 'CHECK_IN', date = new Date().toISOString().slice(0, 10), notes = '', status = 'PRESENT' } = req.body
+    const now = new Date().toISOString()
+    let row = await StaffAttendance.findOne({ staff_id: staff.id, date })
+
+    if (!row) {
+      row = await StaffAttendance.create({
+        id: `att_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        staff_id: staff.id,
+        staff_name: staff.name,
+        date,
+        check_in: action === 'CHECK_OUT' ? null : now,
+        check_out: action === 'CHECK_OUT' ? now : null,
+        status,
+        notes: notes.trim(),
+        created_by: req.admin.id,
+        created_at: now,
+        updated_at: now,
+      })
+    } else {
+      const update = { status, notes: notes.trim(), updated_at: now }
+      if (action === 'CHECK_IN') update.check_in = row.check_in || now
+      if (action === 'CHECK_OUT') update.check_out = now
+      await StaffAttendance.updateOne({ id: row.id }, update)
+    }
+
+    res.json({ success: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.use(adminAuth, enforceStaffPermission)
 
 // Dashboard Stats
 router.get('/dashboard', adminAuth, async (req, res) => {
@@ -152,6 +348,20 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     const periodPointsIssued = periodPointAgg.length > 0 ? periodPointAgg[0].points : 0
 
     const recentOrders = await getLiveOrders({ fromDate: startDate, toDate: endDate, limit: 8 })
+    const [materials, stockMovements, operationsExpenses, purchases, wastage, staffCount, todayAttendance] = await Promise.all([
+      RawMaterial.find({ is_active: 1 }).sort({ name: 1 }).lean(),
+      StockMovement.find().sort({ created_at: -1 }).limit(10).lean(),
+      Expense.find({ date: { $gte: startDate, $lte: endDate } }).lean(),
+      PurchaseEntry.find({ purchased_at: dateFilter }).lean(),
+      WastageEntry.find({ wasted_at: dateFilter }).lean(),
+      Admin.countDocuments({ is_active: { $ne: 0 } }),
+      StaffAttendance.find({ date: today }).lean(),
+    ])
+
+    const lowStock = materials.filter((m) => Number(m.current_stock || 0) <= Number(m.min_stock || 0))
+    const expenseTotal = operationsExpenses.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+    const purchaseTotal = purchases.reduce((sum, row) => sum + Number(row.total_cost || 0), 0)
+    const wastageCount = wastage.reduce((sum, row) => sum + Number(row.quantity || 0), 0)
     const paidTodayOrders = await Order.find({
       created_at: dateFilter,
       status: { $ne: 'CANCELLED' },
@@ -186,6 +396,23 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       activePointsPool,
       paymentBreakdown,
       recentOrders,
+      stockSummary: {
+        materialsCount: materials.length,
+        lowStockCount: lowStock.length,
+        lowStock: lowStock.slice(0, 8),
+        recentMovements: stockMovements,
+      },
+      operationsSummary: {
+        expenses: expenseTotal,
+        purchases: purchaseTotal,
+        wastageQuantity: wastageCount,
+        estimatedProfit: todaySales - expenseTotal - purchaseTotal,
+      },
+      staffSummary: {
+        activeStaff: staffCount,
+        presentToday: todayAttendance.filter((row) => row.check_in).length,
+        attendance: todayAttendance.slice(0, 8),
+      },
       filter: {
         fromDate: startDate,
         toDate: endDate,

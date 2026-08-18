@@ -7,8 +7,12 @@ const adminSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
   password_hash: { type: String, required: true },
   role: { type: String, default: 'ADMIN' }, // 'SUPER_ADMIN' | 'BILLING_STAFF' | 'KITCHEN_STAFF'
+  phone: { type: String, default: '' },
+  permissions: { type: Array, default: [] },
+  is_active: { type: Number, default: 1 },
   pin: { type: String, default: '1234' },
   created_at: { type: String, default: () => new Date().toISOString() },
+  updated_at: { type: String, default: () => new Date().toISOString() },
 })
 
 // 2. Customer Model
@@ -366,6 +370,20 @@ const customerFeedbackSchema = new mongoose.Schema({
   created_at: { type: String, default: () => new Date().toISOString(), index: true },
 })
 
+const staffAttendanceSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  staff_id: { type: String, required: true, index: true },
+  staff_name: { type: String, required: true },
+  date: { type: String, required: true, index: true },
+  check_in: { type: String, default: null },
+  check_out: { type: String, default: null },
+  status: { type: String, default: 'PRESENT' }, // 'PRESENT' | 'ABSENT' | 'HALF_DAY'
+  notes: { type: String, default: '' },
+  created_by: { type: String, default: 'ADMIN' },
+  created_at: { type: String, default: () => new Date().toISOString() },
+  updated_at: { type: String, default: () => new Date().toISOString() },
+})
+
 export const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema)
 export const Customer = mongoose.models.Customer || mongoose.model('Customer', customerSchema)
 export const RoyaltyMember = mongoose.models.RoyaltyMember || mongoose.model('RoyaltyMember', royaltyMemberSchema)
@@ -392,3 +410,4 @@ export const PurchaseEntry = mongoose.models.PurchaseEntry || mongoose.model('Pu
 export const WastageEntry = mongoose.models.WastageEntry || mongoose.model('WastageEntry', wastageEntrySchema)
 export const CashierShift = mongoose.models.CashierShift || mongoose.model('CashierShift', cashierShiftSchema)
 export const CustomerFeedback = mongoose.models.CustomerFeedback || mongoose.model('CustomerFeedback', customerFeedbackSchema)
+export const StaffAttendance = mongoose.models.StaffAttendance || mongoose.model('StaffAttendance', staffAttendanceSchema)

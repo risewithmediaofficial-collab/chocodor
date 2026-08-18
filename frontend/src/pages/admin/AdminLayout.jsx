@@ -16,6 +16,7 @@ import {
   Settings,
   ShoppingCart,
   Users,
+  UserCog,
 } from 'lucide-react'
 import { useAdminAuth } from '../../context/AdminAuthContext'
 import logoImg from '../../assets/logo.jpg'
@@ -38,22 +39,30 @@ export default function AdminLayout() {
   }
 
   const navItems = [
-    { label: 'Hold Bills', to: '/admin/hold-bills', icon: ReceiptText },
-    { label: 'Stock Management', to: '/admin/stock', icon: Boxes },
-    { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
-    { label: 'POS / Billing', to: '/admin/pos', icon: ShoppingCart },
-    { label: 'Live Orders', to: '/admin/orders', icon: ClipboardList },
-    { label: 'KOT Kitchen', to: '/admin/kot', icon: ChefHat },
-    { label: 'Operations', to: '/admin/operations', icon: PanelsTopLeft },
-    { label: 'Products & Points', to: '/admin/products', icon: BadgePercent },
-    { label: 'Customers & Loyalty', to: '/admin/customers', icon: Users },
-    { label: 'Royalty Ledger', to: '/admin/royalty', icon: ScrollText },
-    { label: 'Rewards Manager', to: '/admin/rewards', icon: Gift },
-    { label: 'Reports & Analytics', to: '/admin/reports', icon: BarChart3 },
-    { label: 'Settings', to: '/admin/settings', icon: Settings },
+    { key: 'dashboard', label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
+    { key: 'pos', label: 'POS / Billing', to: '/admin/pos', icon: ShoppingCart },
+    { key: 'hold-bills', label: 'Hold Bills', to: '/admin/hold-bills', icon: ReceiptText },
+    { key: 'stock', label: 'Stock Management', to: '/admin/stock', icon: Boxes },
+    { key: 'orders', label: 'Live Orders', to: '/admin/orders', icon: ClipboardList },
+    { key: 'kot', label: 'KOT Kitchen', to: '/admin/kot', icon: ChefHat },
+    { key: 'operations', label: 'Operations', to: '/admin/operations', icon: PanelsTopLeft },
+    { key: 'products', label: 'Products & Points', to: '/admin/products', icon: BadgePercent },
+    { key: 'customers', label: 'Customers & Loyalty', to: '/admin/customers', icon: Users },
+    { key: 'royalty', label: 'Royalty Ledger', to: '/admin/royalty', icon: ScrollText },
+    { key: 'rewards', label: 'Rewards Manager', to: '/admin/rewards', icon: Gift },
+    { key: 'reports', label: 'Reports & Analytics', to: '/admin/reports', icon: BarChart3 },
+    { key: 'staff', label: 'Staff Management', to: '/admin/staff', icon: UserCog },
+    { key: 'settings', label: 'Settings', to: '/admin/settings', icon: Settings },
   ]
 
+  const canAccess = (item) => admin.role === 'SUPER_ADMIN' || admin.permissions?.includes('*') || admin.permissions?.includes(item.key)
+  const visibleNavItems = navItems.filter(canAccess)
   const currentItem = navItems.find((n) => location.pathname.startsWith(n.to)) || navItems[0]
+  const currentAllowed = currentItem.key === 'dashboard' || canAccess(currentItem)
+
+  if (!currentAllowed) {
+    return <Navigate to="/admin/dashboard" replace />
+  }
 
   return (
     <div className="admin-container">
@@ -115,7 +124,7 @@ export default function AdminLayout() {
         </div>
 
         <nav className="admin-sidebar__nav">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon
 
             return (

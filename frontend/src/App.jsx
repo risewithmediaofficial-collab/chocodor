@@ -39,6 +39,7 @@ const AdminRoyaltyPage = lazy(() => import('./pages/admin/AdminRoyaltyPage'))
 const AdminRewardsPage = lazy(() => import('./pages/admin/AdminRewardsPage'))
 const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'))
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'))
+const AdminStaffPage = lazy(() => import('./pages/admin/AdminStaffPage'))
 
 // Premium Suspense Fallback Loader
 function PageLoadingFallback() {
@@ -105,6 +106,7 @@ export default function App() {
                   <Route path="royalty" element={<AdminRoyaltyPage />} />
                   <Route path="rewards" element={<AdminRewardsPage />} />
                   <Route path="reports" element={<AdminReportsPage />} />
+                  <Route path="staff" element={<AdminStaffPage />} />
                   <Route path="settings" element={<AdminSettingsPage />} />
                 </Route>
               </Routes>
