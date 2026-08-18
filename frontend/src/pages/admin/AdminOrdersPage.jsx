@@ -272,8 +272,13 @@ export default function AdminOrdersPage() {
                   <td>
                     <strong style={{ fontSize: '14px' }}>{formatPrice(ord.total_amount)}</strong>
                     <div style={{ fontSize: '11px', color: ord.payment_status === 'PAID' ? '#2E6F40' : '#B37B24', fontWeight: 700 }}>
-                      {ord.payment_status}
+                      {ord.payment_method === 'SPLIT' ? 'SPLIT' : ord.payment_status}
                     </div>
+                    {ord.payment_method === 'SPLIT' && Array.isArray(ord.payment_breakdown) && (
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                        {ord.payment_breakdown.map((p) => `${p.method} ${formatPrice(p.amount)}`).join(' + ')}
+                      </div>
+                    )}
                   </td>
 
                   <td>

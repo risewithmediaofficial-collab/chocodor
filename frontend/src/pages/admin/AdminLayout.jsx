@@ -21,6 +21,8 @@ export default function AdminLayout() {
   }
 
   const navItems = [
+    { label: 'Hold Bills', to: '/admin/hold-bills' },
+    { label: 'Stock Management', to: '/admin/stock' },
     { label: '📊 Dashboard', to: '/admin/dashboard' },
     { label: '⚡ POS / Billing', to: '/admin/pos' },
     { label: '🛵 Live Orders', to: '/admin/orders' },

@@ -6,6 +6,9 @@ import {
   Invoice,
   StoreSetting,
   Product,
+  CategoryMaterial,
+  RawMaterial,
+  StockMovement,
   Reward,
   RewardRedemption,
   OrderStatusHistory,
@@ -30,6 +33,121 @@ async function getNextSequenceNumber(prefix, Model) {
   const year = new Date().getFullYear()
   const padded = String(count).padStart(6, '0')
   return `${prefix}-${year}-${padded}`
+}
+
+function normalizePaymentBreakdown(paymentMethod, paymentBreakdown = [], totalAmount = 0) {
+  if (paymentMethod !== 'SPLIT') return []
+
+  const allowedMethods = ['CASH', 'UPI', 'CARD']
+  const normalized = []
+  for (const entry of paymentBreakdown || []) {
+    const method = String(entry.method || '').toUpperCase()
+    const amount = Number(entry.amount || 0)
+    if (allowedMethods.includes(method) && amount > 0) {
+      normalized.push({ method, amount: Number(amount.toFixed(2)) })
+    }
+  }
+
+  if (normalized.length < 2) {
+    throw new Error('Split payment requires at least two payment methods with amount.')
+  }
+
+  const splitTotal = Number(normalized.reduce((sum, entry) => sum + entry.amount, 0).toFixed(2))
+  const expectedTotal = Number(Number(totalAmount || 0).toFixed(2))
+  if (Math.abs(splitTotal - expectedTotal) > 0.01) {
+    throw new Error(`Split payment total must equal bill total. Split: ₹${splitTotal}, Bill: ₹${expectedTotal}`)
+  }
+
+  return normalized
+}
+
+async function deductCategoryStockForOrder(orderId, orderNumber, evaluatedItems) {
+  const consumptionByMaterial = new Map()
+
+  for (const item of evaluatedItems) {
+    if (!item.categoryId) continue
+    const recipes = await CategoryMaterial.find({ category_id: item.categoryId }).lean()
+    for (const recipe of recipes) {
+      const consumeQty = Number(recipe.quantity_per_item || 0) * item.quantity
+      if (consumeQty <= 0) continue
+      consumptionByMaterial.set(
+        recipe.material_id,
+        (consumptionByMaterial.get(recipe.material_id) || 0) + consumeQty
+      )
+    }
+  }
+
+  const now = new Date().toISOString()
+  for (const [materialId, quantity] of consumptionByMaterial.entries()) {
+    const material = await RawMaterial.findOne({ id: materialId })
+    if (!material) continue
+
+    const balanceAfter = Number(material.current_stock || 0) - quantity
+    await RawMaterial.updateOne(
+      { id: materialId },
+      { current_stock: balanceAfter, updated_at: now }
+    )
+
+    await StockMovement.create({
+      id: `stk_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      material_id: materialId,
+      type: 'ORDER_CONSUMPTION',
+      quantity: -Number(quantity.toFixed(3)),
+      balance_after: Number(balanceAfter.toFixed(3)),
+      reason: `Auto deducted for order ${orderNumber}`,
+      order_id: orderId,
+      order_number: orderNumber,
+      created_by: 'SYSTEM',
+      created_at: now,
+    })
+  }
+}
+
+async function reverseCategoryStockForOrder(order) {
+  const items = await OrderItem.find({ order_id: order.id }).lean()
+  const evaluatedItems = []
+
+  for (const item of items) {
+    const product = await Product.findOne({ id: item.product_id }).lean()
+    if (!product?.category_id) continue
+    evaluatedItems.push({
+      categoryId: product.category_id,
+      quantity: item.quantity,
+    })
+  }
+
+  const reversalByMaterial = new Map()
+  for (const item of evaluatedItems) {
+    const recipes = await CategoryMaterial.find({ category_id: item.categoryId }).lean()
+    for (const recipe of recipes) {
+      const qty = Number(recipe.quantity_per_item || 0) * item.quantity
+      if (qty <= 0) continue
+      reversalByMaterial.set(recipe.material_id, (reversalByMaterial.get(recipe.material_id) || 0) + qty)
+    }
+  }
+
+  const now = new Date().toISOString()
+  for (const [materialId, quantity] of reversalByMaterial.entries()) {
+    const material = await RawMaterial.findOne({ id: materialId })
+    if (!material) continue
+    const balanceAfter = Number(material.current_stock || 0) + quantity
+
+    await RawMaterial.updateOne({ id: materialId }, { current_stock: balanceAfter, updated_at: now })
+    await StockMovement.create({
+      id: `stk_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      material_id: materialId,
+      type: 'ADJUSTMENT',
+      quantity: Number(quantity.toFixed(3)),
+      balance_after: Number(balanceAfter.toFixed(3)),
+      reason: `Stock reversed for cancelled order ${order.order_number}`,
+      order_id: order.id,
+      order_number: order.order_number,
+      created_by: 'SYSTEM',
+      created_at: now,
+    })
+  }
+
+  await Order.updateOne({ id: order.id }, { stock_reversed: 1, updated_at: now })
 }
 
 /**
@@ -79,6 +197,7 @@ export async function calculateOrderQuote({
   }
 
   let subtotal = 0
+  let takeawayExtraTotal = 0
   let totalRoyaltyPoints = 0
   const evaluatedItems = []
 
@@ -89,19 +208,28 @@ export async function calculateOrderQuote({
     if (!product.is_available) throw new Error(`Product is currently unavailable: ${product.name}`)
 
     const quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
-    const itemSubtotal = product.price * quantity
+    const baseUnitPrice = product.price || 0
+    const takeawayExtra = orderType === 'PICKUP' ? Math.max(0, Number(product.takeaway_extra_cost || 0)) : 0
+    const effectiveUnitPrice = baseUnitPrice + takeawayExtra
+    const itemSubtotal = effectiveUnitPrice * quantity
+    const itemTakeawayExtraTotal = takeawayExtra * quantity
     const itemPoints = (product.royalty_points || 0) * quantity
 
     subtotal += itemSubtotal
+    takeawayExtraTotal += itemTakeawayExtraTotal
     totalRoyaltyPoints += itemPoints
 
     evaluatedItems.push({
       productId: product.id,
+      categoryId: product.category_id,
       name: product.name,
-      unitPrice: product.price,
+      unitPrice: effectiveUnitPrice,
+      baseUnitPrice,
+      takeawayExtra,
       royaltyPointsPerUnit: product.royalty_points || 0,
       quantity,
       subtotal: itemSubtotal,
+      takeawayExtraTotal: itemTakeawayExtraTotal,
       totalPoints: itemPoints,
     })
   }
@@ -158,6 +286,7 @@ export async function calculateOrderQuote({
   return {
     items: evaluatedItems,
     subtotal,
+    takeawayExtraTotal,
     deliveryFee,
     firstOrderDiscount,
     rewardDiscount,
@@ -186,6 +315,8 @@ export async function createOrder({
   appliedRewardCode = null,
   applyFirstOrderOffer = false,
   paymentMethod = 'COD', // 'COD' | 'RAZORPAY' | 'CASH' | 'UPI' | 'CARD'
+  paymentBreakdown = [],
+  deferPayment = false,
   posStaffId = null,
   tableOrTokenNo = null,
   notes = '',
@@ -211,9 +342,13 @@ export async function createOrder({
 
   let initialStatus = 'NEW'
   let paymentStatus = 'PENDING'
+  const normalizedPaymentBreakdown = normalizePaymentBreakdown(paymentMethod, paymentBreakdown, quote.grandTotal)
 
-  if (orderSource === 'OFFLINE') {
-    if (['CASH', 'UPI', 'CARD'].includes(paymentMethod)) {
+  if (orderSource === 'OFFLINE' && deferPayment) {
+    paymentStatus = 'PENDING'
+    initialStatus = 'NEW'
+  } else if (orderSource === 'OFFLINE') {
+    if (['CASH', 'UPI', 'CARD', 'SPLIT'].includes(paymentMethod)) {
       paymentStatus = 'PAID'
       initialStatus = 'CONFIRMED'
     } else {
@@ -244,6 +379,7 @@ export async function createOrder({
     delivery_address: deliveryAddress,
     pickup_time: pickupTime,
     subtotal: quote.subtotal,
+    takeaway_extra_total: quote.takeawayExtraTotal,
     delivery_fee: quote.deliveryFee,
     first_order_discount: quote.firstOrderDiscount,
     reward_discount: quote.rewardDiscount,
@@ -251,9 +387,12 @@ export async function createOrder({
     total_amount: quote.grandTotal,
     total_royalty_points: quote.totalRoyaltyPoints,
     points_credited: 0,
+    stock_deducted: 0,
+    stock_reversed: 0,
     status: initialStatus,
     payment_status: paymentStatus,
     payment_method: paymentMethod,
+    payment_breakdown: normalizedPaymentBreakdown,
     pos_staff_id: posStaffId || null,
     table_or_token_no: tableOrTokenNo || null,
     notes: notes || '',
@@ -268,6 +407,8 @@ export async function createOrder({
     product_id: item.productId,
     product_name_snapshot: item.name,
     unit_price_snapshot: item.unitPrice,
+    base_unit_price_snapshot: item.baseUnitPrice,
+    takeaway_extra_snapshot: item.takeawayExtra,
     royalty_points_snapshot: item.royaltyPointsPerUnit,
     quantity: item.quantity,
     subtotal: item.subtotal,
@@ -292,6 +433,9 @@ export async function createOrder({
     updated_at: now,
   })
 
+  await deductCategoryStockForOrder(orderId, orderNumber, quote.items)
+  await Order.updateOne({ id: orderId }, { stock_deducted: 1, updated_at: now })
+
   // 4. Insert Invoice
   await Invoice.create({
     id: `inv_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
@@ -302,11 +446,13 @@ export async function createOrder({
     customer_mobile: customerMobile.trim(),
     customer_address: deliveryAddress,
     subtotal: quote.subtotal,
+    takeaway_extra_total: quote.takeawayExtraTotal,
     first_order_discount: quote.firstOrderDiscount,
     reward_discount: quote.rewardDiscount,
     delivery_charge: quote.deliveryFee,
     total_amount: quote.grandTotal,
     payment_method: paymentMethod,
+    payment_breakdown: normalizedPaymentBreakdown,
     payment_status: paymentStatus,
     royalty_points_earned: quote.totalRoyaltyPoints,
     created_at: now,
@@ -404,7 +550,8 @@ export async function updateOrderStatus(orderId, newStatus, changedBy = 'ADMIN',
 
   // Point crediting trigger on COMPLETED
   if (newStatus === 'COMPLETED') {
-    if (order.points_credited === 0 && order.customer_id) {
+    const canCreditPoints = ['PAID', 'COD_CONFIRMED'].includes(paymentStatusUpdate)
+    if (canCreditPoints && order.points_credited === 0 && order.customer_id) {
       await creditOrderPoints(order.id, changedBy)
     }
   }
@@ -412,6 +559,60 @@ export async function updateOrderStatus(orderId, newStatus, changedBy = 'ADMIN',
   // Point reversal on CANCELLED if previously credited
   if (newStatus === 'CANCELLED' && order.points_credited === 1 && order.customer_id) {
     await reverseOrderPoints(order.id, `Order ${order.order_number} Cancelled`, changedBy)
+  }
+
+  const canReverseStock = ['NEW', 'CONFIRMED'].includes(order.status)
+  if (newStatus === 'CANCELLED' && canReverseStock && order.stock_deducted === 1 && order.stock_reversed !== 1) {
+    await reverseCategoryStockForOrder(order)
+  }
+
+  return await getOrderById(orderId)
+}
+
+/**
+ * Settles payment for an already-created POS order, usually after a held KOT is completed.
+ */
+export async function settleOrderPayment(orderId, paymentMethod = 'CASH', changedBy = 'POS_STAFF', paymentBreakdown = []) {
+  const order = await Order.findOne({ id: orderId })
+  if (!order) throw new Error('Order not found')
+
+  const cleanPaymentMethod = ['CASH', 'UPI', 'CARD', 'SPLIT'].includes(paymentMethod) ? paymentMethod : 'CASH'
+  const normalizedPaymentBreakdown = normalizePaymentBreakdown(cleanPaymentMethod, paymentBreakdown, order.total_amount)
+  const now = new Date().toISOString()
+
+  await Order.updateOne(
+    { id: orderId },
+    {
+      payment_method: cleanPaymentMethod,
+      payment_breakdown: normalizedPaymentBreakdown,
+      payment_status: 'PAID',
+      status: 'COMPLETED',
+      updated_at: now,
+    }
+  )
+
+  await Invoice.updateOne(
+    { order_id: orderId },
+    {
+      payment_method: cleanPaymentMethod,
+      payment_breakdown: normalizedPaymentBreakdown,
+      payment_status: 'PAID',
+    }
+  )
+
+  await KOT.updateOne({ order_id: orderId }, { status: 'COMPLETED', updated_at: now })
+
+  await OrderStatusHistory.create({
+    id: `osh_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`,
+    order_id: orderId,
+    status: 'COMPLETED',
+    changed_by: changedBy,
+    notes: `Held bill settled by ${cleanPaymentMethod}`,
+    created_at: now,
+  })
+
+  if (order.points_credited === 0 && order.customer_id) {
+    await creditOrderPoints(order.id, changedBy)
   }
 
   return await getOrderById(orderId)

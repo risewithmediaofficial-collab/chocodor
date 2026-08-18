@@ -33,6 +33,7 @@ export default function AdminProductsPage() {
   const [formName, setFormName] = useState('')
   const [formCategoryId, setFormCategoryId] = useState('')
   const [formPrice, setFormPrice] = useState('')
+  const [formTakeawayExtraCost, setFormTakeawayExtraCost] = useState('')
   const [formPoints, setFormPoints] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formBadge, setFormBadge] = useState('')
@@ -112,6 +113,7 @@ export default function AdminProductsPage() {
     setFormName('')
     setFormCategoryId(categoriesList[0]?.id || 'cat-1')
     setFormPrice('')
+    setFormTakeawayExtraCost('0')
     setFormPoints('')
     setFormDescription('')
     setFormBadge('')
@@ -133,6 +135,7 @@ export default function AdminProductsPage() {
     setFormName(p.name)
     setFormCategoryId(p.categoryId)
     setFormPrice(p.price)
+    setFormTakeawayExtraCost(p.takeawayExtraCost || 0)
     setFormPoints(p.royaltyPoints)
     setFormDescription(p.description || '')
     setFormBadge(p.badge || '')
@@ -176,6 +179,7 @@ export default function AdminProductsPage() {
         name: formName.trim(),
         categoryId: formCategoryId,
         price: parseFloat(formPrice),
+        takeawayExtraCost: parseFloat(formTakeawayExtraCost) || 0,
         royaltyPoints: parseInt(formPoints, 10),
         description: formDescription.trim(),
         badge: formBadge.trim(),
@@ -413,7 +417,8 @@ export default function AdminProductsPage() {
               <tr>
                 <th>Dessert Item</th>
                 <th>Category</th>
-                <th>Price</th>
+                <th>Dine-In Price</th>
+                <th>Takeaway Extra</th>
                 <th>Royalty Points</th>
                 <th>Today&apos;s Menu (1-Click Toggle)</th>
                 <th>Dietary / Ingredients</th>
@@ -447,6 +452,9 @@ export default function AdminProductsPage() {
                     <span style={{ fontWeight: 600, color: 'var(--cocoa)' }}>{p.category}</span>
                   </td>
                   <td style={{ fontWeight: 800, fontSize: '14px' }}>{formatPrice(p.price)}</td>
+                  <td style={{ fontWeight: 800, fontSize: '13px', color: Number(p.takeawayExtraCost || 0) > 0 ? '#2E6F40' : 'var(--text-muted)' }}>
+                    {Number(p.takeawayExtraCost || 0) > 0 ? `+${formatPrice(p.takeawayExtraCost)}` : 'No extra'}
+                  </td>
                   <td>
                     <span style={{ background: '#FAF0E4', color: '#B37B24', padding: '4px 10px', borderRadius: 'var(--radius-pill)', fontWeight: 900, fontSize: '13px' }}>
                       👑 {p.royaltyPoints} pts
@@ -577,7 +585,7 @@ export default function AdminProductsPage() {
                 </div>
 
                 {/* 2. Price & Royalty Points */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '12px' }}>
                   <div>
                     <label className="form-label">Price in ₹ (INR) *</label>
                     <input
@@ -590,6 +598,20 @@ export default function AdminProductsPage() {
                       placeholder="e.g. 389"
                       className="form-input"
                     />
+                  </div>
+
+                  <div>
+                    <label className="form-label">Takeaway / Parcel Extra</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={formTakeawayExtraCost}
+                      onChange={(e) => setFormTakeawayExtraCost(e.target.value)}
+                      placeholder="e.g. 10"
+                      className="form-input"
+                    />
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Added per unit only for pickup/takeaway.</span>
                   </div>
 
                   <div>

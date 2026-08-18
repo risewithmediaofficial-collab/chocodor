@@ -246,6 +246,17 @@ export default function AdminOrderDetailPage() {
             <div style={{ marginTop: '16px', fontSize: '13px', color: 'var(--text-muted)' }}>
               Payment Status: <strong>{order.payment_status}</strong> ({order.payment_method})
             </div>
+            {order.payment_method === 'SPLIT' && Array.isArray(order.payment_breakdown) && (
+              <div style={{ marginTop: '10px', background: '#FAF6F0', padding: '10px', borderRadius: '10px', fontSize: '13px' }}>
+                <strong>Split Payment:</strong>
+                {order.payment_breakdown.map((part) => (
+                  <div key={part.method} style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                    <span>{part.method}</span>
+                    <span>{formatPrice(part.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -8,6 +8,9 @@ import {
   RoyaltyMember,
   RoyaltyTransaction,
   Category,
+  RawMaterial,
+  CategoryMaterial,
+  StockMovement,
   Product,
   Order,
   OrderItem,
@@ -20,7 +23,7 @@ import {
   OrderStatusHistory,
   QRToken,
 } from '../models/index.js'
-import { updateOrderStatus, getOrderById, getLiveOrders } from '../services/orderService.js'
+import { updateOrderStatus, getOrderById, getLiveOrders, settleOrderPayment } from '../services/orderService.js'
 import { manualPointAdjustment } from '../services/royaltyService.js'
 import { JWT_SECRET } from './auth.js'
 
@@ -124,6 +127,23 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     const activePointsPool = activePointsAgg.length > 0 ? activePointsAgg[0].sum : 0
 
     const recentOrders = await getLiveOrders({ limit: 5 })
+    const paidTodayOrders = await Order.find({
+      created_at: { $regex: `^${today}` },
+      status: { $ne: 'CANCELLED' },
+      payment_status: 'PAID',
+    }).lean()
+    const paymentBreakdown = { CASH: 0, UPI: 0, CARD: 0, SPLIT: 0 }
+    for (const order of paidTodayOrders) {
+      if (order.payment_method === 'SPLIT' && Array.isArray(order.payment_breakdown)) {
+        paymentBreakdown.SPLIT += order.total_amount || 0
+        for (const part of order.payment_breakdown) {
+          const method = part.method
+          if (paymentBreakdown[method] !== undefined) paymentBreakdown[method] += Number(part.amount || 0)
+        }
+      } else if (paymentBreakdown[order.payment_method] !== undefined) {
+        paymentBreakdown[order.payment_method] += order.total_amount || 0
+      }
+    }
 
     res.json({
       todayOrders,
@@ -138,6 +158,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       pointsIssued,
       pointsRedeemed,
       activePointsPool,
+      paymentBreakdown,
       recentOrders,
     })
   } catch (err) {
@@ -180,6 +201,208 @@ router.patch('/orders/:id/status', adminAuth, async (req, res) => {
   }
 })
 
+// Held POS Bills: unpaid walk-in/takeaway/dine-in bills sent to KOT
+router.get('/hold-bills', adminAuth, async (req, res) => {
+  try {
+    const orders = await Order.find({
+      order_source: 'OFFLINE',
+      payment_status: 'PENDING',
+      status: { $ne: 'CANCELLED' },
+    })
+      .sort({ created_at: -1 })
+      .lean()
+
+    const orderIds = orders.map((o) => o.id)
+    const allItems = await OrderItem.find({ order_id: { $in: orderIds } }).lean()
+    const allKots = await KOT.find({ order_id: { $in: orderIds } }).lean()
+
+    const itemsMap = {}
+    for (const item of allItems) {
+      if (!itemsMap[item.order_id]) itemsMap[item.order_id] = []
+      itemsMap[item.order_id].push(item)
+    }
+
+    const kotMap = {}
+    for (const kot of allKots) kotMap[kot.order_id] = kot
+
+    res.json({
+      bills: orders.map((order) => ({
+        ...order,
+        items: itemsMap[order.id] || [],
+        kot: kotMap[order.id] || null,
+      })),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.patch('/orders/:id/settle-payment', adminAuth, async (req, res) => {
+  try {
+    const { paymentMethod = 'CASH', paymentBreakdown = [] } = req.body
+    const order = await settleOrderPayment(req.params.id, paymentMethod, req.admin.id, paymentBreakdown)
+    res.json({ success: true, order, invoice: order.invoice })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// Stock Management: raw materials, category recipes, and movement ledger
+router.get('/stock', adminAuth, async (req, res) => {
+  try {
+    const [categories, materials, categoryMaterials, movements] = await Promise.all([
+      Category.find().sort({ sort_order: 1 }).lean(),
+      RawMaterial.find({ is_active: 1 }).sort({ name: 1 }).lean(),
+      CategoryMaterial.find().lean(),
+      StockMovement.find().sort({ created_at: -1 }).limit(80).lean(),
+    ])
+
+    const materialMap = {}
+    for (const material of materials) materialMap[material.id] = material
+    const categoryMap = {}
+    for (const category of categories) categoryMap[category.id] = category
+
+    res.json({
+      categories,
+      materials,
+      categoryMaterials: categoryMaterials.map((row) => ({
+        ...row,
+        material: materialMap[row.material_id] || null,
+        category: categoryMap[row.category_id] || null,
+      })),
+      movements: movements.map((row) => ({
+        ...row,
+        material: materialMap[row.material_id] || null,
+      })),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/stock/materials', adminAuth, async (req, res) => {
+  try {
+    const { name, unit = 'pcs', currentStock = 0, minStock = 0, supplier = '' } = req.body
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Material name is required' })
+
+    const now = new Date().toISOString()
+    const material = await RawMaterial.create({
+      id: `mat_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      name: name.trim(),
+      unit: unit.trim() || 'pcs',
+      current_stock: Number(currentStock || 0),
+      min_stock: Number(minStock || 0),
+      supplier: supplier.trim(),
+      is_active: 1,
+      created_at: now,
+      updated_at: now,
+    })
+
+    if (Number(currentStock || 0) !== 0) {
+      await StockMovement.create({
+        id: `stk_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        material_id: material.id,
+        type: 'IN',
+        quantity: Number(currentStock || 0),
+        balance_after: Number(currentStock || 0),
+        reason: 'Opening stock',
+        created_by: req.admin.id,
+        created_at: now,
+      })
+    }
+
+    res.status(201).json({ success: true, material })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.patch('/stock/materials/:id', adminAuth, async (req, res) => {
+  try {
+    const update = {}
+    if (req.body.name !== undefined) update.name = req.body.name.trim()
+    if (req.body.unit !== undefined) update.unit = req.body.unit.trim() || 'pcs'
+    if (req.body.minStock !== undefined) update.min_stock = Number(req.body.minStock || 0)
+    if (req.body.supplier !== undefined) update.supplier = req.body.supplier.trim()
+    if (req.body.isActive !== undefined) update.is_active = req.body.isActive ? 1 : 0
+    update.updated_at = new Date().toISOString()
+
+    const material = await RawMaterial.findOneAndUpdate({ id: req.params.id }, update, { returnDocument: 'after' })
+    if (!material) return res.status(404).json({ error: 'Material not found' })
+    res.json({ success: true, material })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.post('/stock/materials/:id/adjust', adminAuth, async (req, res) => {
+  try {
+    const { quantity, type = 'IN', reason = '' } = req.body
+    const material = await RawMaterial.findOne({ id: req.params.id })
+    if (!material) return res.status(404).json({ error: 'Material not found' })
+
+    const qty = Math.abs(Number(quantity || 0))
+    if (qty <= 0) return res.status(400).json({ error: 'Quantity must be greater than 0' })
+
+    const movementType = ['IN', 'OUT', 'ADJUSTMENT'].includes(type) ? type : 'IN'
+    const signedQty = movementType === 'IN' ? qty : -qty
+    const balanceAfter = Number(material.current_stock || 0) + signedQty
+    const now = new Date().toISOString()
+
+    await RawMaterial.updateOne({ id: material.id }, { current_stock: balanceAfter, updated_at: now })
+    await StockMovement.create({
+      id: `stk_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      material_id: material.id,
+      type: movementType,
+      quantity: signedQty,
+      balance_after: balanceAfter,
+      reason: reason.trim() || (movementType === 'IN' ? 'Stock added' : 'Stock adjusted'),
+      created_by: req.admin.id,
+      created_at: now,
+    })
+
+    res.json({ success: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.post('/stock/category-materials', adminAuth, async (req, res) => {
+  try {
+    const { categoryId, materialId, quantityPerItem } = req.body
+    if (!categoryId || !materialId) return res.status(400).json({ error: 'Category and material are required' })
+    const qty = Number(quantityPerItem || 0)
+    if (qty <= 0) return res.status(400).json({ error: 'Quantity per item must be greater than 0' })
+
+    const existing = await CategoryMaterial.findOne({ category_id: categoryId, material_id: materialId })
+    if (existing) {
+      await CategoryMaterial.updateOne({ id: existing.id }, { quantity_per_item: qty })
+      return res.json({ success: true, message: 'Category material updated' })
+    }
+
+    await CategoryMaterial.create({
+      id: `cm_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      category_id: categoryId,
+      material_id: materialId,
+      quantity_per_item: qty,
+      created_at: new Date().toISOString(),
+    })
+    res.status(201).json({ success: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.delete('/stock/category-materials/:id', adminAuth, async (req, res) => {
+  try {
+    const deleted = await CategoryMaterial.deleteOne({ id: req.params.id })
+    if (deleted.deletedCount === 0) return res.status(404).json({ error: 'Category material mapping not found' })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Manage Products
 router.get('/products', adminAuth, async (req, res) => {
   try {
@@ -198,6 +421,7 @@ router.get('/products', adminAuth, async (req, res) => {
         category: catMap[p.category_id] || 'Desserts',
         name: p.name,
         price: p.price,
+        takeawayExtraCost: p.takeaway_extra_cost || 0,
         royaltyPoints: p.royalty_points,
         description: p.description,
         badge: p.badge,
@@ -225,6 +449,7 @@ router.post('/products', adminAuth, async (req, res) => {
       name,
       categoryId,
       price,
+      takeawayExtraCost = 0,
       royaltyPoints,
       description,
       badge,
@@ -255,6 +480,7 @@ router.post('/products', adminAuth, async (req, res) => {
       category_id: categoryId,
       name: name.trim(),
       price: numPrice,
+      takeaway_extra_cost: Math.max(0, parseFloat(takeawayExtraCost) || 0),
       royalty_points: numPoints,
       description: description || '',
       badge: badge || '',
@@ -286,6 +512,7 @@ router.patch('/products/:id', adminAuth, async (req, res) => {
     const updateFields = {}
     if (req.body.name !== undefined) updateFields.name = req.body.name.trim()
     if (req.body.price !== undefined) updateFields.price = parseFloat(req.body.price)
+    if (req.body.takeawayExtraCost !== undefined) updateFields.takeaway_extra_cost = Math.max(0, parseFloat(req.body.takeawayExtraCost) || 0)
     if (req.body.royaltyPoints !== undefined) updateFields.royalty_points = parseInt(req.body.royaltyPoints, 10)
     if (req.body.isAvailable !== undefined) updateFields.is_available = req.body.isAvailable ? 1 : 0
     if (req.body.isFeatured !== undefined) updateFields.is_featured = req.body.isFeatured ? 1 : 0
@@ -736,6 +963,7 @@ router.get('/products', adminAuth, async (req, res) => {
         category: cInfo.name,
         name: p.name,
         price: p.price,
+        takeawayExtraCost: p.takeaway_extra_cost || 0,
         royaltyPoints: p.royalty_points,
         description: p.description || '',
         badge: p.badge || '',
@@ -773,6 +1001,7 @@ router.post('/products', adminAuth, async (req, res) => {
       name,
       categoryId,
       price,
+      takeawayExtraCost = 0,
       royaltyPoints,
       description = '',
       badge = '',
@@ -799,6 +1028,7 @@ router.post('/products', adminAuth, async (req, res) => {
       category_id: categoryId,
       name: name.trim(),
       price: parseFloat(price),
+      takeaway_extra_cost: Math.max(0, parseFloat(takeawayExtraCost) || 0),
       royalty_points: parseInt(royaltyPoints || Math.round(parseFloat(price) * 0.08), 10),
       description: description.trim(),
       badge: badge.trim(),
@@ -829,6 +1059,7 @@ router.patch('/products/:id', adminAuth, async (req, res) => {
     if (req.body.name !== undefined) updateData.name = req.body.name.trim()
     if (req.body.categoryId !== undefined) updateData.category_id = req.body.categoryId
     if (req.body.price !== undefined) updateData.price = parseFloat(req.body.price)
+    if (req.body.takeawayExtraCost !== undefined) updateData.takeaway_extra_cost = Math.max(0, parseFloat(req.body.takeawayExtraCost) || 0)
     if (req.body.royaltyPoints !== undefined) updateData.royalty_points = parseInt(req.body.royaltyPoints, 10)
     if (req.body.description !== undefined) updateData.description = req.body.description.trim()
     if (req.body.badge !== undefined) updateData.badge = req.body.badge.trim()

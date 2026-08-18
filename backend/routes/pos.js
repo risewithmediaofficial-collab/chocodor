@@ -149,10 +149,12 @@ router.post('/orders', async (req, res) => {
       appliedRewardCode = null,
       applyFirstOrderOffer = false,
       paymentMethod = 'CASH',
+      paymentBreakdown = [],
       posStaffId = 'COUNTER-1',
       tableOrTokenNo = '',
       notes = '',
       autoComplete = false,
+      holdBill = false,
     } = req.body
 
     const cleanMobile = String(customerMobile).replace(/\D/g, '')
@@ -205,13 +207,17 @@ router.post('/orders', async (req, res) => {
       appliedRewardCode,
       applyFirstOrderOffer,
       paymentMethod,
+      paymentBreakdown,
+      deferPayment: holdBill,
       posStaffId,
       tableOrTokenNo,
-      notes,
+      notes: holdBill ? `${notes || ''}${notes ? '\n' : ''}Bill held at POS - unpaid walk-in / settle after KOT.` : notes,
     })
 
     let finalOrder = order
-    if (autoComplete) {
+    if (holdBill) {
+      finalOrder = await getOrderById(order.id)
+    } else if (autoComplete) {
       finalOrder = await updateOrderStatus(order.id, 'COMPLETED', 'POS_STAFF', 'Completed at Billing Counter')
     } else {
       await Order.updateOne({ id: order.id }, { payment_status: 'PAID' })

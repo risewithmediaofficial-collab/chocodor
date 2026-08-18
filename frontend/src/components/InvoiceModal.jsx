@@ -341,6 +341,16 @@ export default function InvoiceModal({ orderId, invoiceNumber, onClose }) {
             {/* Payment Summary */}
             <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '1px solid #000', fontSize: '11px' }}>
               <div style={{ fontWeight: 800, marginBottom: '2px' }}>Payment Summary</div>
+              {invoice.payment_method === 'SPLIT' && Array.isArray(invoice.payment_breakdown) && (
+                <div style={{ marginBottom: '3px' }}>
+                  {invoice.payment_breakdown.map((part) => (
+                    <div key={part.method} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{part.method}</span>
+                      <span>Rs. {Number(part.amount || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>{invoice.payment_method || 'UPI'}</span>
                 <span>₹ {roundedTotal.toFixed(2)}</span>

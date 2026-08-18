@@ -26,6 +26,10 @@ export default function AdminPOSPage() {
   const [orderType, setOrderType] = useState('DINE_IN')
   const [tableNo, setTableNo] = useState('Table 1')
   const [paymentMethod, setPaymentMethod] = useState('UPI')
+  const [isSplitPayment, setIsSplitPayment] = useState(false)
+  const [splitCash, setSplitCash] = useState('')
+  const [splitUpi, setSplitUpi] = useState('')
+  const [splitCard, setSplitCard] = useState('')
   const [notes, setNotes] = useState('')
 
   // Completed Order & QR Pass State
@@ -132,17 +136,32 @@ export default function AdminPOSPage() {
     (sum, item) => sum + (item.royaltyPoints || item.royalty_points || 0) * item.quantity,
     0
   )
-  const deliveryFee = orderType === 'DELIVERY' ? (subtotal >= 500 ? 0 : 40) : 0
-  const grandTotal = subtotal + deliveryFee
+  const takeawayExtraTotal = orderType === 'PICKUP'
+    ? cartItems.reduce((sum, item) => sum + Number(item.takeawayExtraCost || item.takeaway_extra_cost || 0) * item.quantity, 0)
+    : 0
+  const displaySubtotal = subtotal + takeawayExtraTotal
+  const deliveryFee = orderType === 'DELIVERY' ? (displaySubtotal >= 500 ? 0 : 40) : 0
+  const grandTotal = displaySubtotal + deliveryFee
+  const splitTotal = Number(splitCash || 0) + Number(splitUpi || 0) + Number(splitCard || 0)
+  const splitBalance = Number((grandTotal - splitTotal).toFixed(2))
+  const paymentBreakdown = [
+    { method: 'CASH', amount: Number(splitCash || 0) },
+    { method: 'UPI', amount: Number(splitUpi || 0) },
+    { method: 'CARD', amount: Number(splitCard || 0) },
+  ].filter((entry) => entry.amount > 0)
 
   // Submit Order, Generate Bill, & Auto-Create Account
-  const handleCheckoutBill = async () => {
+  const handleCheckoutBill = async ({ holdBill = false } = {}) => {
     if (cartItems.length === 0) {
       alert('Please select at least one dessert item for the bill.')
       return
     }
 
     const cleanMobile = customerMobile.replace(/\D/g, '')
+    if (!holdBill && isSplitPayment && Math.abs(splitBalance) > 0.01) {
+      alert(`Split payment must equal bill total. Balance: ${formatPrice(splitBalance)}`)
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -153,9 +172,11 @@ export default function AdminPOSPage() {
         orderType,
         tableOrTokenNo: tableNo,
         items: cartItems.map((i) => ({ productId: i.id, quantity: i.quantity })),
-        paymentMethod,
+        paymentMethod: !holdBill && isSplitPayment ? 'SPLIT' : paymentMethod,
+        paymentBreakdown: !holdBill && isSplitPayment ? paymentBreakdown : [],
         notes,
-        autoComplete: true,
+        autoComplete: !holdBill,
+        holdBill,
       }
 
       const res = await apiRequest('/pos/orders', {
@@ -164,7 +185,7 @@ export default function AdminPOSPage() {
         body: payload,
       })
 
-      setCompletedData(res)
+      setCompletedData({ ...res, holdBill })
       clearCart()
     } catch (err) {
       alert(`POS Billing Error: ${err.message}`)
@@ -181,7 +202,7 @@ export default function AdminPOSPage() {
   })
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ width: '100%', maxWidth: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
       {/* ─── STEP 1: CUSTOMER ONBOARDING & IDENTIFICATION BAR ─── */}
       <div
@@ -379,6 +400,16 @@ export default function AdminPOSPage() {
               return (
                 <div
                   key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`pos-product-card ${inCartQty > 0 ? 'pos-product-card--active' : ''}`}
+                  onClick={() => addToCart(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      addToCart(p)
+                    }
+                  }}
                   style={{
                     background: inCartQty > 0 ? '#FFF9F0' : '#FFFFFF',
                     borderRadius: '16px',
@@ -388,6 +419,7 @@ export default function AdminPOSPage() {
                     flexDirection: 'column',
                     justifyContent: 'space-between',
                     boxShadow: inCartQty > 0 ? '0 4px 16px rgba(179,123,36,0.15)' : 'none',
+                    cursor: 'pointer',
                   }}
                 >
                   <div>
@@ -406,7 +438,14 @@ export default function AdminPOSPage() {
 
                   <div style={{ marginTop: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <strong style={{ fontSize: '14px', color: 'var(--cocoa-dark)' }}>{formatPrice(p.price)}</strong>
+                      <div>
+                        <strong style={{ fontSize: '14px', color: 'var(--cocoa-dark)' }}>{formatPrice(p.price)}</strong>
+                        {Number(p.takeawayExtraCost || 0) > 0 && (
+                          <span style={{ display: 'block', fontSize: '10px', color: '#2E6F40', fontWeight: 800 }}>
+                            Takeaway +{formatPrice(p.takeawayExtraCost)}
+                          </span>
+                        )}
+                      </div>
                       <span style={{ background: '#FAF0E4', color: '#B37B24', padding: '2px 6px', borderRadius: 'var(--radius-pill)', fontWeight: 900, fontSize: '10px' }}>
                         +{p.royaltyPoints || p.royalty_points || 0} pts
                       </span>
@@ -414,10 +453,16 @@ export default function AdminPOSPage() {
 
                     {/* Quantity Stepper on Card */}
                     {inCartQty > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAF0E4', borderRadius: 'var(--radius-pill)', padding: '2px 4px' }}>
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAF0E4', borderRadius: 'var(--radius-pill)', padding: '2px 4px' }}
+                      >
                         <button
                           type="button"
-                          onClick={() => updateQty(p.id, -1)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            updateQty(p.id, -1)
+                          }}
                           style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#FFFFFF', cursor: 'pointer', fontWeight: 900, fontSize: '14px' }}
                         >
                           −
@@ -427,21 +472,19 @@ export default function AdminPOSPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => updateQty(p.id, 1)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            updateQty(p.id, 1)
+                          }}
                           style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#FFFFFF', cursor: 'pointer', fontWeight: 900, fontSize: '14px' }}
                         >
                           +
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        className="btn btn--outline btn--sm btn--full"
-                        style={{ padding: '6px', fontSize: '12px', fontWeight: 700 }}
-                        onClick={() => addToCart(p)}
-                      >
-                        + Add to Bill
-                      </button>
+                      <div style={{ padding: '8px', borderRadius: 'var(--radius-pill)', background: '#FAF6F0', color: 'var(--cocoa-dark)', fontSize: '11px', fontWeight: 900, textAlign: 'center', border: '1px dashed rgba(61,37,30,0.22)' }}>
+                        Click card to add
+                      </div>
                     )}
                   </div>
                 </div>
@@ -511,7 +554,7 @@ export default function AdminPOSPage() {
             {cartItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-muted)', fontSize: '13px' }}>
                 <span style={{ fontSize: '2rem', display: 'block', marginBottom: '6px' }}>🛒</span>
-                No items added yet. Click &quot;+ Add to Bill&quot; from the menu.
+                No items added yet. Click any product card from the menu.
               </div>
             ) : (
               cartItems.map((item) => (
@@ -519,7 +562,10 @@ export default function AdminPOSPage() {
                   <div style={{ flex: 1, paddingRight: '8px' }}>
                     <div style={{ fontWeight: 700, color: 'var(--cocoa-dark)' }}>{item.name}</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      {formatPrice(item.price)} × {item.quantity} (+{(item.royaltyPoints || item.royalty_points || 0) * item.quantity} pts)
+                      {formatPrice(item.price)}
+                      {orderType === 'PICKUP' && Number(item.takeawayExtraCost || item.takeaway_extra_cost || 0) > 0
+                        ? ` + ${formatPrice(item.takeawayExtraCost || item.takeaway_extra_cost)} parcel`
+                        : ''} × {item.quantity} (+{(item.royaltyPoints || item.royalty_points || 0) * item.quantity} pts)
                     </div>
                   </div>
 
@@ -540,7 +586,7 @@ export default function AdminPOSPage() {
                       +
                     </button>
                     <strong style={{ minWidth: '60px', textAlign: 'right' }}>
-                      {formatPrice(item.price * item.quantity)}
+                      {formatPrice((item.price + (orderType === 'PICKUP' ? Number(item.takeawayExtraCost || item.takeaway_extra_cost || 0) : 0)) * item.quantity)}
                     </strong>
                   </div>
                 </div>
@@ -554,6 +600,12 @@ export default function AdminPOSPage() {
               <span>Subtotal:</span>
               <strong>{formatPrice(subtotal)}</strong>
             </div>
+            {takeawayExtraTotal > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2E6F40', fontWeight: 800 }}>
+                <span>Takeaway / Parcel Extra:</span>
+                <span>{formatPrice(takeawayExtraTotal)}</span>
+              </div>
+            )}
             {deliveryFee > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Delivery:</span>
@@ -574,19 +626,61 @@ export default function AdminPOSPage() {
             <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--cocoa)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
               Payment Method:
             </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 800, marginBottom: '8px', color: 'var(--cocoa-dark)' }}>
+              <input
+                type="checkbox"
+                checked={isSplitPayment}
+                onChange={(e) => setIsSplitPayment(e.target.checked)}
+              />
+              Split payment
+            </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {['UPI', 'CASH', 'CARD'].map((m) => (
                 <button
                   key={m}
                   type="button"
                   className={`btn btn--sm ${paymentMethod === m ? 'btn--gold' : 'btn--outline'}`}
-                  style={{ padding: '8px 4px', fontSize: '12px', fontWeight: 800 }}
+                  disabled={isSplitPayment}
+                  style={{ padding: '8px 4px', fontSize: '12px', fontWeight: 800, opacity: isSplitPayment ? 0.55 : 1 }}
                   onClick={() => setPaymentMethod(m)}
                 >
                   {m === 'UPI' ? '📱 UPI' : m === 'CASH' ? '💵 CASH' : '💳 CARD'}
                 </button>
               ))}
             </div>
+            {isSplitPayment && (
+              <div style={{ marginTop: '10px', background: '#FAF6F0', borderRadius: '12px', padding: '10px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {[
+                  ['Cash', splitCash, setSplitCash],
+                  ['UPI', splitUpi, setSplitUpi],
+                  ['Card', splitCard, setSplitCard],
+                ].map(([label, value, setter]) => (
+                  <label key={label} style={{ fontSize: '11px', fontWeight: 800, color: 'var(--cocoa)' }}>
+                    {label}
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={value}
+                      onChange={(e) => setter(e.target.value)}
+                      placeholder="0"
+                      style={{ width: '100%', marginTop: '4px', padding: '7px 8px', borderRadius: '8px', border: '1px solid rgba(61,37,30,0.15)', fontSize: '12px' }}
+                    />
+                  </label>
+                ))}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 900, color: Math.abs(splitBalance) < 0.01 ? '#2E6F40' : '#BA1B1B' }}>
+                  <span>Split total: {formatPrice(splitTotal)} | Balance: {formatPrice(splitBalance)}</span>
+                  <button
+                    type="button"
+                    className="btn btn--outline btn--sm"
+                    style={{ padding: '4px 8px', fontSize: '11px' }}
+                    onClick={() => setSplitCash(Math.max(0, splitBalance + Number(splitCash || 0)).toFixed(0))}
+                  >
+                    Fill Cash Balance
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Settle Bill & Print Button */}
@@ -595,9 +689,18 @@ export default function AdminPOSPage() {
             disabled={submitting || cartItems.length === 0}
             className="btn btn--gold btn--full"
             style={{ padding: '14px', fontSize: '14px', fontWeight: 900 }}
-            onClick={handleCheckoutBill}
+            onClick={() => handleCheckoutBill({ holdBill: false })}
           >
             {submitting ? 'Generating Bill...' : `✓ Complete Bill & Create Account (${formatPrice(grandTotal)})`}
+          </button>
+          <button
+            type="button"
+            disabled={submitting || cartItems.length === 0}
+            className="btn btn--outline btn--full"
+            style={{ padding: '12px', fontSize: '13px', fontWeight: 900, borderColor: '#2E6F40', color: '#2E6F40', marginTop: '8px' }}
+            onClick={() => handleCheckoutBill({ holdBill: true })}
+          >
+            Hold Bill & Send to KOT ({formatPrice(grandTotal)})
           </button>
         </div>
       </div>
@@ -611,9 +714,9 @@ export default function AdminPOSPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '6px' }}>🎉</span>
-            <span className="section-label">BILL SETTLED &amp; ACCOUNT ACTIVATED</span>
+            <span className="section-label">{completedData.holdBill ? 'BILL HELD & SENT TO KOT' : 'BILL SETTLED & ACCOUNT ACTIVATED'}</span>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', color: 'var(--cocoa-dark)', margin: '4px 0 10px' }}>
-              Invoice {completedData.invoice?.invoice_number}
+              {completedData.holdBill ? `KOT ${completedData.kot?.kot_number || ''}` : `Invoice ${completedData.invoice?.invoice_number}`}
             </h2>
 
             <div style={{ background: '#FAF0E4', padding: '12px', borderRadius: '14px', marginBottom: '16px', fontSize: '13px', textAlign: 'left' }}>
@@ -642,6 +745,7 @@ export default function AdminPOSPage() {
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 type="button"
+                disabled={completedData.holdBill}
                 className="btn btn--gold btn--full"
                 style={{ padding: '12px', fontSize: '13px' }}
                 onClick={() => {
