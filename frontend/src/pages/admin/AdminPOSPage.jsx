@@ -6,9 +6,17 @@ import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 
 import { PRODUCTS, CATEGORIES } from '../../data/products'
 
+const POS_ADDONS = [
+  { name: 'Extra Chocolate', price: 20 },
+  { name: 'Extra Cream', price: 15 },
+  { name: 'Ice Cream Scoop', price: 40 },
+  { name: 'Gift Packing', price: 30 },
+]
+
 export default function AdminPOSPage() {
   const [categories, setCategories] = useState(CATEGORIES)
   const [products, setProducts] = useState(PRODUCTS)
+  const [diningTables, setDiningTables] = useState([])
   const [activeCategory, setActiveCategory] = useState('ALL')
   const [productSearch, setProductSearch] = useState('')
   const [onlyTodayMenu, setOnlyTodayMenu] = useState(true)
@@ -51,6 +59,8 @@ export default function AdminPOSPage() {
         if (prodData && prodData.categories && prodData.categories.length > 0) {
           setCategories(prodData.categories)
         }
+        const opsData = await apiRequest('/admin/operations', { isAdmin: true })
+        setDiningTables(opsData.tables || [])
       } catch (err) {
         console.warn('Backend unavailable, using static POS menu:', err.message)
       }
@@ -115,6 +125,20 @@ export default function AdminPOSPage() {
     })
   }
 
+  const toggleCartAddon = (productId, addon) => {
+    setCartItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== productId) return item
+        const addons = item.addons || []
+        const exists = addons.some((row) => row.name === addon.name)
+        return {
+          ...item,
+          addons: exists ? addons.filter((row) => row.name !== addon.name) : [...addons, addon],
+        }
+      })
+    )
+  }
+
   const updateQty = (productId, delta) => {
     setCartItems((prev) =>
       prev
@@ -135,7 +159,8 @@ export default function AdminPOSPage() {
   }
 
   // Calculations
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const getAddonUnitTotal = (item) => (item.addons || []).reduce((sum, addon) => sum + Number(addon.price || 0), 0)
+  const subtotal = cartItems.reduce((sum, item) => sum + (item.price + getAddonUnitTotal(item)) * item.quantity, 0)
   const totalRoyaltyPoints = cartItems.reduce(
     (sum, item) => sum + (item.royaltyPoints || item.royalty_points || 0) * item.quantity,
     0
@@ -175,7 +200,7 @@ export default function AdminPOSPage() {
         customerMobile: cleanMobile || '9999999999',
         orderType,
         tableOrTokenNo: tableNo,
-        items: cartItems.map((i) => ({ productId: i.id, quantity: i.quantity })),
+        items: cartItems.map((i) => ({ productId: i.id, quantity: i.quantity, addons: i.addons || [] })),
         paymentMethod: !holdBill && isSplitPayment ? 'SPLIT' : paymentMethod,
         paymentBreakdown: !holdBill && isSplitPayment ? paymentBreakdown : [],
         notes,
@@ -188,6 +213,15 @@ export default function AdminPOSPage() {
         isAdmin: true,
         body: payload,
       })
+
+      const selectedTable = diningTables.find((table) => table.name === tableNo)
+      if (selectedTable && orderType === 'DINE_IN') {
+        await apiRequest(`/admin/operations/tables/${selectedTable.id}`, {
+          method: 'PATCH',
+          isAdmin: true,
+          body: { status: holdBill ? 'BILL_PENDING' : 'OCCUPIED', activeOrderId: res.order?.id || '' },
+        }).catch(() => {})
+      }
 
       setCompletedData({ ...res, holdBill })
       clearCart()
@@ -558,9 +592,15 @@ export default function AdminPOSPage() {
               type="text"
               value={tableNo}
               onChange={(e) => setTableNo(e.target.value)}
+              list="pos-table-list"
               placeholder="Table #"
               style={{ width: '100px', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(61,37,30,0.15)', fontSize: '12px' }}
             />
+            <datalist id="pos-table-list">
+              {diningTables.map((table) => (
+                <option key={table.id} value={table.name}>{table.status}</option>
+              ))}
+            </datalist>
           </div>
 
           {/* Itemized Cart List */}
@@ -576,10 +616,34 @@ export default function AdminPOSPage() {
                   <div style={{ flex: 1, paddingRight: '8px' }}>
                     <div style={{ fontWeight: 700, color: 'var(--cocoa-dark)' }}>{item.name}</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      {formatPrice(item.price)}
+                      {formatPrice(item.price + getAddonUnitTotal(item))}
                       {orderType === 'PICKUP' && Number(item.takeawayExtraCost || item.takeaway_extra_cost || 0) > 0
                         ? ` + ${formatPrice(item.takeawayExtraCost || item.takeaway_extra_cost)} parcel`
                         : ''} × {item.quantity} (+{(item.royaltyPoints || item.royalty_points || 0) * item.quantity} pts)
+                    </div>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginTop: '6px' }}>
+                      {POS_ADDONS.map((addon) => {
+                        const active = (item.addons || []).some((row) => row.name === addon.name)
+                        return (
+                          <button
+                            key={addon.name}
+                            type="button"
+                            onClick={() => toggleCartAddon(item.id, addon)}
+                            style={{
+                              padding: '3px 7px',
+                              borderRadius: '999px',
+                              border: active ? '1px solid #2E6F40' : '1px solid rgba(61,37,30,0.18)',
+                              background: active ? '#E2F0E6' : '#FFFFFF',
+                              color: active ? '#2E6F40' : 'var(--text-muted)',
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {addon.name} +{formatPrice(addon.price)}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -600,7 +664,7 @@ export default function AdminPOSPage() {
                       +
                     </button>
                     <strong style={{ minWidth: '60px', textAlign: 'right' }}>
-                      {formatPrice((item.price + (orderType === 'PICKUP' ? Number(item.takeawayExtraCost || item.takeaway_extra_cost || 0) : 0)) * item.quantity)}
+                      {formatPrice((item.price + getAddonUnitTotal(item) + (orderType === 'PICKUP' ? Number(item.takeawayExtraCost || item.takeaway_extra_cost || 0) : 0)) * item.quantity)}
                     </strong>
                   </div>
                 </div>

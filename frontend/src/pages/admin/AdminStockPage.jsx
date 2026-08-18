@@ -50,6 +50,7 @@ export default function AdminStockPage() {
   const [data, setData] = useState({ categories: [], materials: [], categoryMaterials: [], movements: [] })
   const [loading, setLoading] = useState(true)
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false)
+  const [editingMaterial, setEditingMaterial] = useState(null)
   const [recipeDialogOpen, setRecipeDialogOpen] = useState(false)
   const [materialForm, setMaterialForm] = useState({ name: '', unit: 'pcs', currentStock: '', minStock: '', supplier: '' })
   const [recipeForm, setRecipeForm] = useState({ categoryId: '', materialId: '', quantityPerItem: '' })
@@ -86,22 +87,64 @@ export default function AdminStockPage() {
     [data.materials]
   )
 
-  const createMaterial = async (e) => {
+  const openCreateMaterialDialog = () => {
+    setEditingMaterial(null)
+    setMaterialForm({ name: '', unit: 'pcs', currentStock: '', minStock: '', supplier: '' })
+    setMaterialDialogOpen(true)
+  }
+
+  const openEditMaterialDialog = (material) => {
+    setEditingMaterial(material)
+    setMaterialForm({
+      name: material.name || '',
+      unit: material.unit || 'pcs',
+      currentStock: material.current_stock ?? '',
+      minStock: material.min_stock ?? '',
+      supplier: material.supplier || '',
+    })
+    setMaterialDialogOpen(true)
+  }
+
+  const saveMaterial = async (e) => {
     e.preventDefault()
     try {
       setSaving(true)
-      await apiRequest('/admin/stock/materials', {
-        method: 'POST',
-        isAdmin: true,
-        body: materialForm,
-      })
+      if (editingMaterial) {
+        await apiRequest(`/admin/stock/materials/${editingMaterial.id}`, {
+          method: 'PATCH',
+          isAdmin: true,
+          body: {
+            name: materialForm.name,
+            unit: materialForm.unit,
+            minStock: materialForm.minStock,
+            supplier: materialForm.supplier,
+          },
+        })
+      } else {
+        await apiRequest('/admin/stock/materials', {
+          method: 'POST',
+          isAdmin: true,
+          body: materialForm,
+        })
+      }
       setMaterialForm({ name: '', unit: 'pcs', currentStock: '', minStock: '', supplier: '' })
+      setEditingMaterial(null)
       setMaterialDialogOpen(false)
       await loadStock()
     } catch (err) {
       alert(`Material save failed: ${err.message}`)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const deleteMaterial = async (material) => {
+    if (!window.confirm(`Delete ${material.name}? This will also remove its category material rules.`)) return
+    try {
+      await apiRequest(`/admin/stock/materials/${material.id}`, { method: 'DELETE', isAdmin: true })
+      await loadStock()
+    } catch (err) {
+      alert(`Material delete failed: ${err.message}`)
     }
   }
 
@@ -163,7 +206,7 @@ export default function AdminStockPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn--gold btn--sm" onClick={() => setMaterialDialogOpen(true)}>
+          <button type="button" className="btn btn--gold btn--sm" onClick={openCreateMaterialDialog}>
             + Add Raw Material
           </button>
           <button type="button" className="btn btn--outline btn--sm" onClick={() => setRecipeDialogOpen(true)}>
@@ -189,7 +232,7 @@ export default function AdminStockPage() {
               {data.materials.length} material{data.materials.length === 1 ? '' : 's'} added
             </p>
           </div>
-          <button type="button" className="btn btn--gold btn--sm" onClick={() => setMaterialDialogOpen(true)}>
+          <button type="button" className="btn btn--gold btn--sm" onClick={openCreateMaterialDialog}>
             Add Material
           </button>
         </div>
@@ -202,6 +245,7 @@ export default function AdminStockPage() {
                 <th>Min</th>
                 <th>Supplier</th>
                 <th>Stock In / Out</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -222,12 +266,18 @@ export default function AdminStockPage() {
                         <button type="button" className="btn btn--outline btn--sm" onClick={() => adjustStock(m, 'OUT')}>Out</button>
                       </div>
                     </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn btn--outline btn--sm" onClick={() => openEditMaterialDialog(m)}>Edit</button>
+                        <button type="button" className="btn btn--sm" style={{ background: 'rgba(186,27,27,0.1)', color: '#BA1B1B' }} onClick={() => deleteMaterial(m)}>Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
               {data.materials.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
                     No raw materials yet. Click Add Material to create items like Bun, Cream, Chocolate Sauce, Box, or Spoon.
                   </td>
                 </tr>
@@ -311,11 +361,14 @@ export default function AdminStockPage() {
 
       {materialDialogOpen && (
         <StockDialog
-          title="Add Raw Material"
-          note="Create stock items like Bun, Cream, Chocolate Sauce, Packing Box, or Spoon."
-          onClose={() => setMaterialDialogOpen(false)}
+          title={editingMaterial ? 'Edit Raw Material' : 'Add Raw Material'}
+          note={editingMaterial ? 'Update material name, unit, minimum stock, or supplier.' : 'Create stock items like Bun, Cream, Chocolate Sauce, Packing Box, or Spoon.'}
+          onClose={() => {
+            setMaterialDialogOpen(false)
+            setEditingMaterial(null)
+          }}
         >
-          <form onSubmit={createMaterial} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <form onSubmit={saveMaterial} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <input className="form-input" placeholder="Material name eg. Bun, Cream, Chocolate sauce" value={materialForm.name} onChange={(e) => setMaterialForm((p) => ({ ...p, name: e.target.value }))} required />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <select
@@ -328,14 +381,19 @@ export default function AdminStockPage() {
                   <option key={unit} value={unit}>{unit}</option>
                 ))}
               </select>
-              <input className="form-input" type="number" min="0" step="0.001" placeholder="Opening stock" value={materialForm.currentStock} onChange={(e) => setMaterialForm((p) => ({ ...p, currentStock: e.target.value }))} />
+              <input className="form-input" type="number" min="0" step="0.001" placeholder={editingMaterial ? 'Current stock' : 'Opening stock'} value={materialForm.currentStock} disabled={Boolean(editingMaterial)} onChange={(e) => setMaterialForm((p) => ({ ...p, currentStock: e.target.value }))} />
             </div>
+            {editingMaterial && (
+              <div style={{ marginTop: '-4px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                Use Stock In / Out in the table to change current stock quantity.
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <input className="form-input" type="number" min="0" step="0.001" placeholder="Minimum stock" value={materialForm.minStock} onChange={(e) => setMaterialForm((p) => ({ ...p, minStock: e.target.value }))} />
               <input className="form-input" placeholder="Supplier optional" value={materialForm.supplier} onChange={(e) => setMaterialForm((p) => ({ ...p, supplier: e.target.value }))} />
             </div>
             <button type="submit" className="btn btn--gold btn--full" disabled={saving}>
-              {saving ? 'Saving...' : 'Save Material'}
+              {saving ? 'Saving...' : editingMaterial ? 'Update Material' : 'Save Material'}
             </button>
           </form>
         </StockDialog>

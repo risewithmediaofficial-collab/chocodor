@@ -210,7 +210,16 @@ export async function calculateOrderQuote({
     const quantity = Math.max(1, parseInt(item.quantity, 10) || 1)
     const baseUnitPrice = product.price || 0
     const takeawayExtra = orderType === 'PICKUP' ? Math.max(0, Number(product.takeaway_extra_cost || 0)) : 0
-    const effectiveUnitPrice = baseUnitPrice + takeawayExtra
+    const addons = Array.isArray(item.addons)
+      ? item.addons
+          .map((addon) => ({
+            name: String(addon.name || '').trim(),
+            price: Math.max(0, Number(addon.price || 0)),
+          }))
+          .filter((addon) => addon.name && addon.price > 0)
+      : []
+    const addonsUnitTotal = addons.reduce((sum, addon) => sum + addon.price, 0)
+    const effectiveUnitPrice = baseUnitPrice + takeawayExtra + addonsUnitTotal
     const itemSubtotal = effectiveUnitPrice * quantity
     const itemTakeawayExtraTotal = takeawayExtra * quantity
     const itemPoints = (product.royalty_points || 0) * quantity
@@ -226,6 +235,8 @@ export async function calculateOrderQuote({
       unitPrice: effectiveUnitPrice,
       baseUnitPrice,
       takeawayExtra,
+      addons,
+      addonsUnitTotal,
       royaltyPointsPerUnit: product.royalty_points || 0,
       quantity,
       subtotal: itemSubtotal,
@@ -409,6 +420,8 @@ export async function createOrder({
     unit_price_snapshot: item.unitPrice,
     base_unit_price_snapshot: item.baseUnitPrice,
     takeaway_extra_snapshot: item.takeawayExtra,
+    addons_snapshot: item.addons,
+    addons_total_snapshot: item.addonsUnitTotal * item.quantity,
     royalty_points_snapshot: item.royaltyPointsPerUnit,
     quantity: item.quantity,
     subtotal: item.subtotal,

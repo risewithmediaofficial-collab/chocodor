@@ -167,6 +167,8 @@ const orderItemSchema = new mongoose.Schema({
   unit_price_snapshot: { type: Number, required: true },
   base_unit_price_snapshot: { type: Number, default: 0 },
   takeaway_extra_snapshot: { type: Number, default: 0 },
+  addons_snapshot: { type: Array, default: [] },
+  addons_total_snapshot: { type: Number, default: 0 },
   royalty_points_snapshot: { type: Number, required: true },
   quantity: { type: Number, required: true },
   subtotal: { type: Number, required: true },
@@ -294,6 +296,76 @@ const qrTokenSchema = new mongoose.Schema({
   created_at: { type: String, default: () => new Date().toISOString() },
 })
 
+const diningTableSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  name: { type: String, required: true, trim: true },
+  capacity: { type: Number, default: 2 },
+  status: { type: String, default: 'EMPTY' }, // 'EMPTY' | 'OCCUPIED' | 'BILL_PENDING' | 'RESERVED'
+  active_order_id: { type: String, default: null, index: true },
+  notes: { type: String, default: '' },
+  is_active: { type: Number, default: 1 },
+  created_at: { type: String, default: () => new Date().toISOString() },
+  updated_at: { type: String, default: () => new Date().toISOString() },
+})
+
+const expenseSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  date: { type: String, required: true, index: true },
+  category: { type: String, required: true },
+  amount: { type: Number, required: true },
+  paid_by: { type: String, default: 'CASH' },
+  notes: { type: String, default: '' },
+  created_by: { type: String, default: 'ADMIN' },
+  created_at: { type: String, default: () => new Date().toISOString() },
+})
+
+const purchaseEntrySchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  material_id: { type: String, required: true, index: true },
+  vendor: { type: String, default: '' },
+  invoice_no: { type: String, default: '' },
+  quantity: { type: Number, required: true },
+  unit_cost: { type: Number, default: 0 },
+  total_cost: { type: Number, default: 0 },
+  purchased_at: { type: String, default: () => new Date().toISOString(), index: true },
+  created_by: { type: String, default: 'ADMIN' },
+})
+
+const wastageEntrySchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  material_id: { type: String, required: true, index: true },
+  quantity: { type: Number, required: true },
+  reason: { type: String, default: '' },
+  wasted_at: { type: String, default: () => new Date().toISOString(), index: true },
+  created_by: { type: String, default: 'ADMIN' },
+})
+
+const cashierShiftSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  staff_name: { type: String, required: true },
+  opening_cash: { type: Number, default: 0 },
+  cash_sales: { type: Number, default: 0 },
+  upi_sales: { type: Number, default: 0 },
+  card_sales: { type: Number, default: 0 },
+  expenses: { type: Number, default: 0 },
+  closing_cash: { type: Number, default: 0 },
+  difference: { type: Number, default: 0 },
+  status: { type: String, default: 'OPEN' }, // 'OPEN' | 'CLOSED'
+  opened_at: { type: String, default: () => new Date().toISOString(), index: true },
+  closed_at: { type: String, default: null },
+  created_by: { type: String, default: 'ADMIN' },
+})
+
+const customerFeedbackSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  order_id: { type: String, default: null, index: true },
+  customer_name: { type: String, default: 'Guest' },
+  mobile: { type: String, default: '' },
+  rating: { type: Number, required: true },
+  feedback: { type: String, default: '' },
+  created_at: { type: String, default: () => new Date().toISOString(), index: true },
+})
+
 export const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema)
 export const Customer = mongoose.models.Customer || mongoose.model('Customer', customerSchema)
 export const RoyaltyMember = mongoose.models.RoyaltyMember || mongoose.model('RoyaltyMember', royaltyMemberSchema)
@@ -314,3 +386,9 @@ export const ProductReview = mongoose.models.ProductReview || mongoose.model('Pr
 export const OrderStatusHistory = mongoose.models.OrderStatusHistory || mongoose.model('OrderStatusHistory', orderStatusHistorySchema)
 export const PromotionLog = mongoose.models.PromotionLog || mongoose.model('PromotionLog', promotionLogSchema)
 export const QRToken = mongoose.models.QRToken || mongoose.model('QRToken', qrTokenSchema)
+export const DiningTable = mongoose.models.DiningTable || mongoose.model('DiningTable', diningTableSchema)
+export const Expense = mongoose.models.Expense || mongoose.model('Expense', expenseSchema)
+export const PurchaseEntry = mongoose.models.PurchaseEntry || mongoose.model('PurchaseEntry', purchaseEntrySchema)
+export const WastageEntry = mongoose.models.WastageEntry || mongoose.model('WastageEntry', wastageEntrySchema)
+export const CashierShift = mongoose.models.CashierShift || mongoose.model('CashierShift', cashierShiftSchema)
+export const CustomerFeedback = mongoose.models.CustomerFeedback || mongoose.model('CustomerFeedback', customerFeedbackSchema)

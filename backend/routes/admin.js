@@ -22,6 +22,12 @@ import {
   ProductReview,
   OrderStatusHistory,
   QRToken,
+  DiningTable,
+  Expense,
+  PurchaseEntry,
+  WastageEntry,
+  CashierShift,
+  CustomerFeedback,
 } from '../models/index.js'
 import { updateOrderStatus, getOrderById, getLiveOrders, settleOrderPayment } from '../services/orderService.js'
 import { manualPointAdjustment } from '../services/royaltyService.js'
@@ -335,6 +341,23 @@ router.patch('/stock/materials/:id', adminAuth, async (req, res) => {
   }
 })
 
+router.delete('/stock/materials/:id', adminAuth, async (req, res) => {
+  try {
+    const now = new Date().toISOString()
+    const material = await RawMaterial.findOneAndUpdate(
+      { id: req.params.id },
+      { is_active: 0, updated_at: now },
+      { returnDocument: 'after' }
+    )
+    if (!material) return res.status(404).json({ error: 'Material not found' })
+
+    await CategoryMaterial.deleteMany({ material_id: req.params.id })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.post('/stock/materials/:id/adjust', adminAuth, async (req, res) => {
   try {
     const { quantity, type = 'IN', reason = '' } = req.body
@@ -400,6 +423,250 @@ router.delete('/stock/category-materials/:id', adminAuth, async (req, res) => {
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
+  }
+})
+
+// Operations: tables, purchases, wastage, expenses, cashier shifts, feedback, profit
+router.get('/operations', adminAuth, async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const [tables, expenses, purchases, wastage, shifts, feedback, materials, orders, orderItems] = await Promise.all([
+      DiningTable.find({ is_active: 1 }).sort({ name: 1 }).lean(),
+      Expense.find().sort({ created_at: -1 }).limit(40).lean(),
+      PurchaseEntry.find().sort({ purchased_at: -1 }).limit(40).lean(),
+      WastageEntry.find().sort({ wasted_at: -1 }).limit(40).lean(),
+      CashierShift.find().sort({ opened_at: -1 }).limit(20).lean(),
+      CustomerFeedback.find().sort({ created_at: -1 }).limit(30).lean(),
+      RawMaterial.find({ is_active: 1 }).sort({ name: 1 }).lean(),
+      Order.find({ created_at: { $regex: `^${today}` }, status: { $ne: 'CANCELLED' } }).lean(),
+      OrderItem.find().lean(),
+    ])
+
+    const materialMap = {}
+    for (const material of materials) materialMap[material.id] = material
+    const todayOrderIds = new Set(orders.map((order) => order.id))
+    const revenue = orders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0)
+    const todayExpenses = expenses
+      .filter((expense) => String(expense.date || '').startsWith(today))
+      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0)
+    const todayPurchases = purchases
+      .filter((entry) => String(entry.purchased_at || '').startsWith(today))
+      .reduce((sum, entry) => sum + Number(entry.total_cost || 0), 0)
+    const unitsSold = orderItems
+      .filter((item) => todayOrderIds.has(item.order_id))
+      .reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+
+    res.json({
+      tables,
+      expenses,
+      purchases: purchases.map((entry) => ({ ...entry, material: materialMap[entry.material_id] || null })),
+      wastage: wastage.map((entry) => ({ ...entry, material: materialMap[entry.material_id] || null })),
+      shifts,
+      feedback,
+      materials,
+      profit: {
+        date: today,
+        revenue,
+        expenses: todayExpenses,
+        purchases: todayPurchases,
+        estimatedProfit: revenue - todayExpenses - todayPurchases,
+        unitsSold,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/operations/tables', adminAuth, async (req, res) => {
+  try {
+    const { name, capacity = 2, notes = '' } = req.body
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Table name is required' })
+    const now = new Date().toISOString()
+    const table = await DiningTable.create({
+      id: `tbl_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      name: name.trim(),
+      capacity: Number(capacity || 2),
+      notes: notes.trim(),
+      created_at: now,
+      updated_at: now,
+    })
+    res.status(201).json({ success: true, table })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.patch('/operations/tables/:id', adminAuth, async (req, res) => {
+  try {
+    const update = { updated_at: new Date().toISOString() }
+    if (req.body.name !== undefined) update.name = req.body.name.trim()
+    if (req.body.capacity !== undefined) update.capacity = Number(req.body.capacity || 2)
+    if (req.body.status !== undefined) update.status = req.body.status
+    if (req.body.activeOrderId !== undefined) update.active_order_id = req.body.activeOrderId || null
+    if (req.body.notes !== undefined) update.notes = req.body.notes.trim()
+    const table = await DiningTable.findOneAndUpdate({ id: req.params.id }, update, { returnDocument: 'after' })
+    if (!table) return res.status(404).json({ error: 'Table not found' })
+    res.json({ success: true, table })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.delete('/operations/tables/:id', adminAuth, async (req, res) => {
+  try {
+    const table = await DiningTable.findOneAndUpdate({ id: req.params.id }, { is_active: 0, updated_at: new Date().toISOString() })
+    if (!table) return res.status(404).json({ error: 'Table not found' })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/operations/expenses', adminAuth, async (req, res) => {
+  try {
+    const { date = new Date().toISOString().slice(0, 10), category, amount, paidBy = 'CASH', notes = '' } = req.body
+    if (!category || !amount) return res.status(400).json({ error: 'Category and amount are required' })
+    const expense = await Expense.create({
+      id: `exp_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      date,
+      category: category.trim(),
+      amount: Number(amount || 0),
+      paid_by: paidBy,
+      notes: notes.trim(),
+      created_by: req.admin.id,
+    })
+    res.status(201).json({ success: true, expense })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.post('/operations/purchases', adminAuth, async (req, res) => {
+  try {
+    const { materialId, vendor = '', invoiceNo = '', quantity, unitCost = 0 } = req.body
+    const material = await RawMaterial.findOne({ id: materialId })
+    if (!material) return res.status(404).json({ error: 'Material not found' })
+    const qty = Number(quantity || 0)
+    if (qty <= 0) return res.status(400).json({ error: 'Purchase quantity must be greater than 0' })
+    const now = new Date().toISOString()
+    const balanceAfter = Number(material.current_stock || 0) + qty
+    const totalCost = qty * Number(unitCost || 0)
+    const purchase = await PurchaseEntry.create({
+      id: `pur_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      material_id: materialId,
+      vendor: vendor.trim(),
+      invoice_no: invoiceNo.trim(),
+      quantity: qty,
+      unit_cost: Number(unitCost || 0),
+      total_cost: totalCost,
+      purchased_at: now,
+      created_by: req.admin.id,
+    })
+    await RawMaterial.updateOne({ id: materialId }, { current_stock: balanceAfter, updated_at: now })
+    await StockMovement.create({
+      id: `stk_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      material_id: materialId,
+      type: 'IN',
+      quantity: qty,
+      balance_after: balanceAfter,
+      reason: `Purchase entry${invoiceNo ? ` ${invoiceNo}` : ''}`,
+      created_by: req.admin.id,
+      created_at: now,
+    })
+    res.status(201).json({ success: true, purchase })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.post('/operations/wastage', adminAuth, async (req, res) => {
+  try {
+    const { materialId, quantity, reason = '' } = req.body
+    const material = await RawMaterial.findOne({ id: materialId })
+    if (!material) return res.status(404).json({ error: 'Material not found' })
+    const qty = Number(quantity || 0)
+    if (qty <= 0) return res.status(400).json({ error: 'Wastage quantity must be greater than 0' })
+    const now = new Date().toISOString()
+    const balanceAfter = Number(material.current_stock || 0) - qty
+    const entry = await WastageEntry.create({
+      id: `wst_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      material_id: materialId,
+      quantity: qty,
+      reason: reason.trim(),
+      wasted_at: now,
+      created_by: req.admin.id,
+    })
+    await RawMaterial.updateOne({ id: materialId }, { current_stock: balanceAfter, updated_at: now })
+    await StockMovement.create({
+      id: `stk_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      material_id: materialId,
+      type: 'OUT',
+      quantity: -qty,
+      balance_after: balanceAfter,
+      reason: `Wastage: ${reason || 'No reason'}`,
+      created_by: req.admin.id,
+      created_at: now,
+    })
+    res.status(201).json({ success: true, entry })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.post('/operations/shifts', adminAuth, async (req, res) => {
+  try {
+    const { staffName, openingCash = 0 } = req.body
+    if (!staffName || !staffName.trim()) return res.status(400).json({ error: 'Staff name is required' })
+    const shift = await CashierShift.create({
+      id: `shf_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      staff_name: staffName.trim(),
+      opening_cash: Number(openingCash || 0),
+      created_by: req.admin.id,
+    })
+    res.status(201).json({ success: true, shift })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.patch('/operations/shifts/:id/close', adminAuth, async (req, res) => {
+  try {
+    const { cashSales = 0, upiSales = 0, cardSales = 0, expenses = 0, closingCash = 0 } = req.body
+    const shift = await CashierShift.findOne({ id: req.params.id })
+    if (!shift) return res.status(404).json({ error: 'Shift not found' })
+    const difference = Number(closingCash || 0) - (Number(shift.opening_cash || 0) + Number(cashSales || 0) - Number(expenses || 0))
+    await CashierShift.updateOne({ id: shift.id }, {
+      cash_sales: Number(cashSales || 0),
+      upi_sales: Number(upiSales || 0),
+      card_sales: Number(cardSales || 0),
+      expenses: Number(expenses || 0),
+      closing_cash: Number(closingCash || 0),
+      difference,
+      status: 'CLOSED',
+      closed_at: new Date().toISOString(),
+    })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+router.post('/operations/feedback', adminAuth, async (req, res) => {
+  try {
+    const { orderId = null, customerName = 'Guest', mobile = '', rating, feedback = '' } = req.body
+    if (!rating) return res.status(400).json({ error: 'Rating is required' })
+    const entry = await CustomerFeedback.create({
+      id: `fb_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      order_id: orderId || null,
+      customer_name: customerName.trim() || 'Guest',
+      mobile: mobile.trim(),
+      rating: Number(rating || 0),
+      feedback: feedback.trim(),
+    })
+    res.status(201).json({ success: true, entry })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
   }
 })
 

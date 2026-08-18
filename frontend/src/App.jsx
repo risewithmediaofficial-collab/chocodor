@@ -33,6 +33,7 @@ const AdminKOTPage = lazy(() => import('./pages/admin/AdminKOTPage'))
 const AdminHoldBillsPage = lazy(() => import('./pages/admin/AdminHoldBillsPage'))
 const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage'))
 const AdminStockPage = lazy(() => import('./pages/admin/AdminStockPage'))
+const AdminOperationsPage = lazy(() => import('./pages/admin/AdminOperationsPage'))
 const AdminCustomersPage = lazy(() => import('./pages/admin/AdminCustomersPage'))
 const AdminRoyaltyPage = lazy(() => import('./pages/admin/AdminRoyaltyPage'))
 const AdminRewardsPage = lazy(() => import('./pages/admin/AdminRewardsPage'))
@@ -99,6 +100,7 @@ export default function App() {
                   <Route path="hold-bills" element={<AdminHoldBillsPage />} />
                   <Route path="products" element={<AdminProductsPage />} />
                   <Route path="stock" element={<AdminStockPage />} />
+                  <Route path="operations" element={<AdminOperationsPage />} />
                   <Route path="customers" element={<AdminCustomersPage />} />
                   <Route path="royalty" element={<AdminRoyaltyPage />} />
                   <Route path="rewards" element={<AdminRewardsPage />} />
