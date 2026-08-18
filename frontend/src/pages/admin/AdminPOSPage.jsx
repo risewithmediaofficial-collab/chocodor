@@ -20,6 +20,7 @@ export default function AdminPOSPage() {
   const [searchResults, setSearchResults] = useState([])
   const [isSearching, setIsSearching] = useState(false)
   const [custModalOpen, setCustModalOpen] = useState(false)
+  const [isWalkInGuest, setIsWalkInGuest] = useState(true)
 
   // Billing Cart State
   const [cartItems, setCartItems] = useState([])
@@ -59,7 +60,7 @@ export default function AdminPOSPage() {
 
   // Fast Customer Search by Mobile / Name
   useEffect(() => {
-    if (!customerMobile || customerMobile.trim().length < 3) {
+    if (isWalkInGuest || !customerMobile || customerMobile.trim().length < 3) {
       setSearchResults([])
       return
     }
@@ -77,9 +78,10 @@ export default function AdminPOSPage() {
     }, 250)
 
     return () => clearTimeout(timer)
-  }, [customerMobile])
+  }, [customerMobile, isWalkInGuest])
 
   const selectExistingCustomer = (c) => {
+    setIsWalkInGuest(false)
     setSelectedCustomer(c)
     setCustomerName(c.name)
     setCustomerMobile(c.mobile)
@@ -87,6 +89,7 @@ export default function AdminPOSPage() {
   }
 
   const clearCustomer = () => {
+    setIsWalkInGuest(true)
     setSelectedCustomer(null)
     setCustomerName('')
     setCustomerMobile('')
@@ -94,8 +97,9 @@ export default function AdminPOSPage() {
   }
 
   const setWalkInGuest = () => {
+    setIsWalkInGuest(true)
     setSelectedCustomer(null)
-    setCustomerName('')
+    setCustomerName('Walk-in Guest')
     setCustomerMobile('')
     setSearchResults([])
   }
@@ -157,7 +161,7 @@ export default function AdminPOSPage() {
       return
     }
 
-    const cleanMobile = customerMobile.replace(/\D/g, '')
+    const cleanMobile = isWalkInGuest ? '' : customerMobile.replace(/\D/g, '')
     if (!holdBill && isSplitPayment && Math.abs(splitBalance) > 0.01) {
       alert(`Split payment must equal bill total. Balance: ${formatPrice(splitBalance)}`)
       return
@@ -167,7 +171,7 @@ export default function AdminPOSPage() {
     try {
       const payload = {
         customerId: selectedCustomer ? selectedCustomer.id : null,
-        customerName: customerName.trim() || 'Walk-in Guest',
+        customerName: isWalkInGuest ? 'Walk-in Guest' : customerName.trim() || 'Walk-in Guest',
         customerMobile: cleanMobile || '9999999999',
         orderType,
         tableOrTokenNo: tableNo,
@@ -230,7 +234,7 @@ export default function AdminPOSPage() {
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               type="button"
-              className="btn btn--outline btn--sm"
+              className={`btn ${isWalkInGuest ? 'btn--gold' : 'btn--outline'} btn--sm`}
               style={{ padding: '6px 12px', fontSize: '12px' }}
               onClick={setWalkInGuest}
             >
@@ -258,7 +262,10 @@ export default function AdminPOSPage() {
             <input
               type="text"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={(e) => {
+                setIsWalkInGuest(false)
+                setCustomerName(e.target.value)
+              }}
               placeholder="Enter customer name"
               style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '13px', background: '#FFFFFF' }}
             />
@@ -272,7 +279,10 @@ export default function AdminPOSPage() {
               type="tel"
               maxLength={10}
               value={customerMobile}
-              onChange={(e) => setCustomerMobile(e.target.value)}
+              onChange={(e) => {
+                setIsWalkInGuest(false)
+                setCustomerMobile(e.target.value)
+              }}
               placeholder="Enter 10-digit mobile number"
               style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(61,37,30,0.2)', fontSize: '13px', background: '#FFFFFF' }}
             />
@@ -312,7 +322,11 @@ export default function AdminPOSPage() {
           </div>
 
           <div style={{ paddingTop: '10px' }}>
-            {selectedCustomer ? (
+            {isWalkInGuest ? (
+              <div style={{ background: '#E2F0E6', color: '#2E6F40', padding: '10px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 800 }}>
+                ✓ Walk-in Guest active. No account will be created.
+              </div>
+            ) : selectedCustomer ? (
               <div style={{ background: '#E2F0E6', color: '#2E6F40', padding: '10px 16px', borderRadius: '10px', fontSize: '12px', fontWeight: 800 }}>
                 ✓ Existing Member: {selectedCustomer.royalty_id} ({selectedCustomer.current_points} pts)
               </div>
