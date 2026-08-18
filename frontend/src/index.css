@@ -2583,6 +2583,20 @@ body.modal-open {
   transition: background 0.2s, color 0.2s;
 }
 
+.admin-nav-item__icon {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--caramel);
+}
+
+.admin-nav-item__icon svg {
+  display: block;
+}
+
 .admin-nav-item:hover {
   background: #FAF6F0;
   color: var(--cocoa-dark);
@@ -2590,6 +2604,10 @@ body.modal-open {
 
 .admin-nav-item--active {
   background: var(--cocoa-dark);
+  color: var(--gold);
+}
+
+.admin-nav-item--active .admin-nav-item__icon {
   color: var(--gold);
 }
 
@@ -4137,7 +4155,6 @@ body.modal-open {
   border-color: var(--gold) !important;
   box-shadow: 0 4px 14px rgba(240, 193, 75, 0.4) !important;
 }
-
 
 
 

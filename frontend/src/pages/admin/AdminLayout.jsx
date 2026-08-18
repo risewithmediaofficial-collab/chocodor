@@ -1,5 +1,21 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
+import {
+  BadgePercent,
+  BarChart3,
+  Boxes,
+  ChefHat,
+  ClipboardList,
+  ExternalLink,
+  Gift,
+  LayoutDashboard,
+  LogOut,
+  ReceiptText,
+  ScrollText,
+  Settings,
+  ShoppingCart,
+  Users,
+} from 'lucide-react'
 import { useAdminAuth } from '../../context/AdminAuthContext'
 import logoImg from '../../assets/logo.jpg'
 
@@ -21,25 +37,24 @@ export default function AdminLayout() {
   }
 
   const navItems = [
-    { label: 'Hold Bills', to: '/admin/hold-bills' },
-    { label: 'Stock Management', to: '/admin/stock' },
-    { label: '📊 Dashboard', to: '/admin/dashboard' },
-    { label: '⚡ POS / Billing', to: '/admin/pos' },
-    { label: '🛵 Live Orders', to: '/admin/orders' },
-    { label: '🍳 KOT Kitchen', to: '/admin/kot' },
-    { label: '🍫 Products & Points', to: '/admin/products' },
-    { label: '👥 Customers & Royalty', to: '/admin/customers' },
-    { label: '📜 Royalty Ledger', to: '/admin/royalty' },
-    { label: '🎁 Rewards Manager', to: '/admin/rewards' },
-    { label: '📈 Reports & Analytics', to: '/admin/reports' },
-    { label: '⚙️ Settings', to: '/admin/settings' },
+    { label: 'Hold Bills', to: '/admin/hold-bills', icon: ReceiptText },
+    { label: 'Stock Management', to: '/admin/stock', icon: Boxes },
+    { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
+    { label: 'POS / Billing', to: '/admin/pos', icon: ShoppingCart },
+    { label: 'Live Orders', to: '/admin/orders', icon: ClipboardList },
+    { label: 'KOT Kitchen', to: '/admin/kot', icon: ChefHat },
+    { label: 'Products & Points', to: '/admin/products', icon: BadgePercent },
+    { label: 'Customers & Loyalty', to: '/admin/customers', icon: Users },
+    { label: 'Royalty Ledger', to: '/admin/royalty', icon: ScrollText },
+    { label: 'Rewards Manager', to: '/admin/rewards', icon: Gift },
+    { label: 'Reports & Analytics', to: '/admin/reports', icon: BarChart3 },
+    { label: 'Settings', to: '/admin/settings', icon: Settings },
   ]
 
   const currentItem = navItems.find((n) => location.pathname.startsWith(n.to)) || navItems[0]
 
   return (
     <div className="admin-container">
-      {/* Mobile Top Navigation Bar */}
       <header className="admin-mobile-header no-print">
         <button
           type="button"
@@ -58,7 +73,7 @@ export default function AdminLayout() {
             alt="Choco D'or"
             style={{ width: '26px', height: '26px', borderRadius: '6px', objectFit: 'cover' }}
           />
-          <strong>{currentItem.label.replace(/^[\uD800-\uDBFF\uDC00-\uDFFF\s]+/, '')}</strong>
+          <strong>{currentItem.label}</strong>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -66,14 +81,13 @@ export default function AdminLayout() {
             to="/"
             target="_blank"
             className="btn btn--outline btn--sm"
-            style={{ padding: '4px 10px', fontSize: '11px' }}
+            style={{ padding: '4px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            Store ↗
+            Store <ExternalLink size={13} strokeWidth={2.2} />
           </Link>
         </div>
       </header>
 
-      {/* Mobile Backdrop Overlay */}
       {mobileMenuOpen && (
         <div
           className="admin-mobile-overlay no-print"
@@ -81,7 +95,6 @@ export default function AdminLayout() {
         />
       )}
 
-      {/* Sidebar (Responsive drawer on mobile, sticky on desktop) */}
       <aside className={`admin-sidebar no-print ${mobileMenuOpen ? 'admin-sidebar--open' : ''}`}>
         <div className="admin-sidebar__brand">
           <img
@@ -100,18 +113,25 @@ export default function AdminLayout() {
         </div>
 
         <nav className="admin-sidebar__nav">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              onClick={() => setMobileMenuOpen(false)}
-              className={({ isActive }) =>
-                `admin-nav-item ${isActive ? 'admin-nav-item--active' : ''}`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {navItems.map((item) => {
+            const Icon = item.icon
+
+            return (
+              <NavLink
+                key={item.label}
+                to={item.to}
+                onClick={() => setMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  `admin-nav-item ${isActive ? 'admin-nav-item--active' : ''}`
+                }
+              >
+                <span className="admin-nav-item__icon" aria-hidden="true">
+                  <Icon size={18} strokeWidth={2.1} />
+                </span>
+                <span>{item.label}</span>
+              </NavLink>
+            )
+          })}
         </nav>
 
         <div className="admin-sidebar__footer">
@@ -120,22 +140,26 @@ export default function AdminLayout() {
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{admin.email} ({admin.role})</div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Link to="/" target="_blank" className="btn btn--outline btn--sm" style={{ flex: 1, padding: '8px', fontSize: '11px' }}>
-              Store ↗
+            <Link
+              to="/"
+              target="_blank"
+              className="btn btn--outline btn--sm"
+              style={{ flex: 1, padding: '8px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+            >
+              Store <ExternalLink size={13} strokeWidth={2.2} />
             </Link>
             <button
               type="button"
               className="btn btn--sm"
-              style={{ background: 'rgba(186,27,27,0.1)', color: '#BA1B1B', padding: '8px 12px', fontSize: '11px' }}
+              style={{ background: 'rgba(186,27,27,0.1)', color: '#BA1B1B', padding: '8px 12px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               onClick={logout}
             >
-              Logout
+              <LogOut size={13} strokeWidth={2.2} /> Logout
             </button>
           </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="admin-main">
         <Outlet />
       </main>
