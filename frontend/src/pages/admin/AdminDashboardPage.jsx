@@ -35,6 +35,9 @@ export default function AdminDashboardPage() {
     return <div style={{ padding: '40px' }}>Loading live dashboard metrics...</div>
   }
 
+  const isTodayFilter = stats?.filter?.isToday !== false
+  const periodLabel = isTodayFilter ? 'Today' : 'Selected Period'
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
@@ -69,13 +72,13 @@ export default function AdminDashboardPage() {
       {/* Metric Cards Grid */}
       <div className="admin-stats-grid">
         <div className="admin-stat-card">
-          <div className="admin-stat-card__label">Today&apos;s Orders</div>
+          <div className="admin-stat-card__label">{periodLabel} Orders</div>
           <div className="admin-stat-card__val">{stats?.todayOrders || 0}</div>
           <div className="admin-stat-card__sub">Total Lifetime: {stats?.totalOrders || 0}</div>
         </div>
 
         <div className="admin-stat-card">
-          <div className="admin-stat-card__label">Today&apos;s Sales</div>
+          <div className="admin-stat-card__label">{periodLabel} Sales</div>
           <div className="admin-stat-card__val" style={{ color: '#2E6F40' }}>
             {formatPrice(stats?.todaySales || 0)}
           </div>
@@ -100,8 +103,8 @@ export default function AdminDashboardPage() {
 
         <div className="admin-stat-card">
           <div className="admin-stat-card__label">Points Issued</div>
-          <div className="admin-stat-card__val">{stats?.pointsIssued || 0} pts</div>
-          <div className="admin-stat-card__sub">Redeemed: {stats?.pointsRedeemed || 0} pts</div>
+          <div className="admin-stat-card__val">{stats?.periodPointsIssued || 0} pts</div>
+          <div className="admin-stat-card__sub">Lifetime issued: {stats?.pointsIssued || 0} pts</div>
         </div>
 
         <div className="admin-stat-card">
@@ -125,7 +128,7 @@ export default function AdminDashboardPage() {
             <div className="admin-stat-card__val" style={{ fontSize: '1.25rem', color: '#2E6F40' }}>
               {formatPrice(value)}
             </div>
-            <div className="admin-stat-card__sub">Today&apos;s paid POS/orders</div>
+            <div className="admin-stat-card__sub">{periodLabel} paid POS/orders</div>
           </div>
         ))}
       </div>

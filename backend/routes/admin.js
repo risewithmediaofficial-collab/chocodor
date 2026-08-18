@@ -92,12 +92,19 @@ router.post('/login', async (req, res) => {
 router.get('/dashboard', adminAuth, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0]
+    const { fromDate, toDate } = req.query
+    const startDate = fromDate || today
+    const endDate = toDate || fromDate || today
+    const dateFilter = {
+      $gte: `${startDate}T00:00:00.000Z`,
+      $lte: `${endDate}T23:59:59.999Z`,
+    }
 
     const totalOrders = await Order.countDocuments()
-    const todayOrders = await Order.countDocuments({ created_at: { $regex: `^${today}` } })
+    const todayOrders = await Order.countDocuments({ created_at: dateFilter })
 
     const todaySalesAgg = await Order.aggregate([
-      { $match: { created_at: { $regex: `^${today}` }, status: { $ne: 'CANCELLED' } } },
+      { $match: { created_at: dateFilter, status: { $ne: 'CANCELLED' } } },
       { $group: { _id: null, total: { $sum: '$total_amount' } } },
     ])
     const todaySales = todaySalesAgg.length > 0 ? todaySalesAgg[0].total : 0
@@ -108,12 +115,13 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     ])
     const totalSales = totalSalesAgg.length > 0 ? totalSalesAgg[0].total : 0
 
-    const pendingOrders = await Order.countDocuments({ status: 'NEW' })
+    const pendingOrders = await Order.countDocuments({ created_at: dateFilter, status: 'NEW' })
     const processingOrders = await Order.countDocuments({
+      created_at: dateFilter,
       status: { $in: ['CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'] },
     })
-    const completedOrders = await Order.countDocuments({ status: 'COMPLETED' })
-    const cancelledOrders = await Order.countDocuments({ status: 'CANCELLED' })
+    const completedOrders = await Order.countDocuments({ created_at: dateFilter, status: 'COMPLETED' })
+    const cancelledOrders = await Order.countDocuments({ created_at: dateFilter, status: 'CANCELLED' })
 
     const totalMembers = await RoyaltyMember.countDocuments()
 
@@ -132,9 +140,20 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     ])
     const activePointsPool = activePointsAgg.length > 0 ? activePointsAgg[0].sum : 0
 
-    const recentOrders = await getLiveOrders({ limit: 5 })
+    const periodOrders = await Order.find({
+      created_at: dateFilter,
+      status: { $ne: 'CANCELLED' },
+    }).lean()
+    const periodOrderIds = periodOrders.map((order) => order.id)
+    const periodPointAgg = await OrderItem.aggregate([
+      { $match: { order_id: { $in: periodOrderIds } } },
+      { $group: { _id: null, points: { $sum: '$total_points' } } },
+    ])
+    const periodPointsIssued = periodPointAgg.length > 0 ? periodPointAgg[0].points : 0
+
+    const recentOrders = await getLiveOrders({ fromDate: startDate, toDate: endDate, limit: 8 })
     const paidTodayOrders = await Order.find({
-      created_at: { $regex: `^${today}` },
+      created_at: dateFilter,
       status: { $ne: 'CANCELLED' },
       payment_status: 'PAID',
     }).lean()
@@ -162,10 +181,16 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       cancelledOrders,
       totalMembers,
       pointsIssued,
+      periodPointsIssued,
       pointsRedeemed,
       activePointsPool,
       paymentBreakdown,
       recentOrders,
+      filter: {
+        fromDate: startDate,
+        toDate: endDate,
+        isToday: startDate === today && endDate === today,
+      },
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
