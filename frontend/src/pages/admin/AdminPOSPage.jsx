@@ -13,6 +13,12 @@ const POS_ADDONS = [
   { name: 'Gift Packing', price: 30 },
 ]
 
+const ORDER_TYPES = [
+  { value: 'DINE_IN', label: 'Dine-In', icon: '🍽️' },
+  { value: 'PICKUP', label: 'Takeaway', icon: '🛍️' },
+  { value: 'DELIVERY', label: 'Delivery', icon: '🛵' },
+]
+
 export default function AdminPOSPage() {
   const [categories, setCategories] = useState(CATEGORIES)
   const [products, setProducts] = useState(PRODUCTS)
@@ -44,6 +50,7 @@ export default function AdminPOSPage() {
   // Completed Order & QR Pass State
   const [completedData, setCompletedData] = useState(null)
   const [activeInvoiceNumber, setActiveInvoiceNumber] = useState(null)
+  const [autoPrintInvoice, setAutoPrintInvoice] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   useBodyScrollLock(Boolean(completedData || activeInvoiceNumber || custModalOpen))
@@ -578,22 +585,38 @@ export default function AdminPOSPage() {
           </div>
 
           {/* Order Type & Table */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <select
-              value={orderType}
-              onChange={(e) => setOrderType(e.target.value)}
-              style={{ flex: 1, padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(61,37,30,0.15)', fontSize: '12px', background: '#FFFFFF' }}
-            >
-              <option value="DINE_IN">🍽️ Dine-In</option>
-              <option value="PICKUP">🛍️ Takeaway / Pickup</option>
-              <option value="DELIVERY">🛵 Store Delivery</option>
-            </select>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+              {ORDER_TYPES.map((type) => {
+                const active = orderType === type.value
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setOrderType(type.value)}
+                    style={{
+                      padding: '8px 6px',
+                      borderRadius: '10px',
+                      border: active ? '1px solid var(--caramel)' : '1px solid rgba(61,37,30,0.15)',
+                      background: active ? '#F6C343' : '#FFFFFF',
+                      color: active ? 'var(--cocoa-dark)' : 'var(--cocoa)',
+                      fontSize: '11px',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <span aria-hidden="true">{type.icon}</span> {type.label}
+                  </button>
+                )
+              })}
+            </div>
             <input
               type="text"
               value={tableNo}
               onChange={(e) => setTableNo(e.target.value)}
               list="pos-table-list"
-              placeholder="Table #"
+              placeholder={orderType === 'DINE_IN' ? 'Table #' : 'Token #'}
               style={{ width: '100px', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(61,37,30,0.15)', fontSize: '12px' }}
             />
             <datalist id="pos-table-list">
@@ -827,6 +850,7 @@ export default function AdminPOSPage() {
                 className="btn btn--gold btn--full"
                 style={{ padding: '12px', fontSize: '13px' }}
                 onClick={() => {
+                  setAutoPrintInvoice(true)
                   setActiveInvoiceNumber(completedData.invoice.invoice_number)
                   setCompletedData(null)
                 }}
@@ -850,7 +874,11 @@ export default function AdminPOSPage() {
       {activeInvoiceNumber && (
         <InvoiceModal
           invoiceNumber={activeInvoiceNumber}
-          onClose={() => setActiveInvoiceNumber(null)}
+          autoPrint={autoPrintInvoice}
+          onClose={() => {
+            setActiveInvoiceNumber(null)
+            setAutoPrintInvoice(false)
+          }}
         />
       )}
     </div>

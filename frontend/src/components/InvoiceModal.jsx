@@ -5,7 +5,7 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { printElement } from '../utils/printHelper'
 import logoImg from '../assets/logo.jpg'
 
-export default function InvoiceModal({ orderId, invoiceNumber, onClose }) {
+export default function InvoiceModal({ orderId, invoiceNumber, onClose, autoPrint = false }) {
   useBodyScrollLock(true)
   const [invoiceData, setInvoiceData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -39,6 +39,14 @@ export default function InvoiceModal({ orderId, invoiceNumber, onClose }) {
   const handlePrint = () => {
     printElement('printable-invoice', `Invoice_${invoiceData?.invoice?.invoice_number || 'ChocoDor'}`)
   }
+
+  useEffect(() => {
+    if (!autoPrint || loading || !invoiceData?.invoice) return
+    const timer = setTimeout(() => {
+      printElement('printable-invoice', `Invoice_${invoiceData.invoice.invoice_number || 'ChocoDor'}`)
+    }, 450)
+    return () => clearTimeout(timer)
+  }, [autoPrint, loading, invoiceData])
 
   if (loading) {
     return (
