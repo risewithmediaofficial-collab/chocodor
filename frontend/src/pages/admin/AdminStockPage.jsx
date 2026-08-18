@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest } from '../../api/client'
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 
+const MATERIAL_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'packet', 'box', 'bottle', 'tin', 'tray']
+
 function StockDialog({ title, note, maxWidth = '560px', onClose, children }) {
   return (
     <div
@@ -316,7 +318,16 @@ export default function AdminStockPage() {
           <form onSubmit={createMaterial} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <input className="form-input" placeholder="Material name eg. Bun, Cream, Chocolate sauce" value={materialForm.name} onChange={(e) => setMaterialForm((p) => ({ ...p, name: e.target.value }))} required />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <input className="form-input" placeholder="Unit eg. pcs, g, ml" value={materialForm.unit} onChange={(e) => setMaterialForm((p) => ({ ...p, unit: e.target.value }))} />
+              <select
+                className="form-input"
+                value={materialForm.unit}
+                onChange={(e) => setMaterialForm((p) => ({ ...p, unit: e.target.value }))}
+                style={{ background: '#FFFFFF' }}
+              >
+                {MATERIAL_UNITS.map((unit) => (
+                  <option key={unit} value={unit}>{unit}</option>
+                ))}
+              </select>
               <input className="form-input" type="number" min="0" step="0.001" placeholder="Opening stock" value={materialForm.currentStock} onChange={(e) => setMaterialForm((p) => ({ ...p, currentStock: e.target.value }))} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>

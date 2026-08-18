@@ -522,8 +522,7 @@ export default function AdminProductsPage() {
       {isModalOpen && (
         <div className="cart-drawer-overlay" onClick={() => setIsModalOpen(false)}>
           <div
-            className="product-modal"
-            style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}
+            className="product-modal admin-product-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -534,7 +533,7 @@ export default function AdminProductsPage() {
               ✕
             </button>
 
-            <div className="product-modal__content" style={{ padding: '32px' }}>
+            <div className="product-modal__content admin-product-modal__content">
               <span className="section-label">
                 {editingProduct ? 'EDIT CONFECTIONERY PRODUCT' : 'CREATE NEW CONFECTIONERY PRODUCT'}
               </span>
@@ -542,7 +541,7 @@ export default function AdminProductsPage() {
                 {editingProduct ? `Edit: ${editingProduct.name}` : 'New Dessert Master'}
               </h2>
 
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <form onSubmit={handleSubmit} className="admin-product-form">
                 
                 {/* 1. Basic Name & Category */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

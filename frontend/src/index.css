@@ -2179,6 +2179,66 @@ body.modal-open {
   margin-bottom: 16px;
 }
 
+.admin-product-modal {
+  width: min(92vw, 720px);
+  max-width: 720px;
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 30px;
+}
+
+.admin-product-modal .product-modal__close {
+  top: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+}
+
+.admin-product-modal__content {
+  padding: 34px 44px 36px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(90, 56, 40, 0.42) transparent;
+}
+
+.admin-product-modal__content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.admin-product-modal__content::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 24px 0;
+}
+
+.admin-product-modal__content::-webkit-scrollbar-thumb {
+  background: rgba(90, 56, 40, 0.34);
+  border-radius: 999px;
+  border: 2px solid var(--cream);
+}
+
+.admin-product-modal__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(90, 56, 40, 0.52);
+}
+
+.admin-product-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+@media (max-width: 720px) {
+  .admin-product-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    border-radius: 22px;
+  }
+
+  .admin-product-modal__content {
+    padding: 28px 20px 26px;
+  }
+}
+
 /* User pill in Navbar */
 .navbar__user-pill {
   display: flex;
@@ -4155,6 +4215,4 @@ body.modal-open {
   border-color: var(--gold) !important;
   box-shadow: 0 4px 14px rgba(240, 193, 75, 0.4) !important;
 }
-
-
 
