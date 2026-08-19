@@ -585,8 +585,8 @@ export default function AdminPOSPage() {
           </div>
 
           {/* Order Type & Table */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 92px', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '5px', minWidth: 0 }}>
               {ORDER_TYPES.map((type) => {
                 const active = orderType === type.value
                 return (
@@ -595,18 +595,22 @@ export default function AdminPOSPage() {
                     type="button"
                     onClick={() => setOrderType(type.value)}
                     style={{
-                      padding: '8px 6px',
+                      width: '100%',
+                      minWidth: 0,
+                      padding: '8px 4px',
                       borderRadius: '10px',
                       border: active ? '1px solid var(--caramel)' : '1px solid rgba(61,37,30,0.15)',
                       background: active ? '#F6C343' : '#FFFFFF',
                       color: active ? 'var(--cocoa-dark)' : 'var(--cocoa)',
-                      fontSize: '11px',
+                      fontSize: '10.5px',
                       fontWeight: 900,
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}
                   >
-                    <span aria-hidden="true">{type.icon}</span> {type.label}
+                    {type.label}
                   </button>
                 )
               })}
@@ -617,7 +621,7 @@ export default function AdminPOSPage() {
               onChange={(e) => setTableNo(e.target.value)}
               list="pos-table-list"
               placeholder={orderType === 'DINE_IN' ? 'Table #' : 'Token #'}
-              style={{ width: '100px', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(61,37,30,0.15)', fontSize: '12px' }}
+              style={{ width: '92px', minWidth: 0, padding: '6px 8px', borderRadius: '8px', border: '1px solid rgba(61,37,30,0.15)', fontSize: '12px' }}
             />
             <datalist id="pos-table-list">
               {diningTables.map((table) => (
