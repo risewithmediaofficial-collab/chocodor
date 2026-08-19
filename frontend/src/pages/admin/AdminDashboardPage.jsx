@@ -295,7 +295,7 @@ export default function AdminDashboardPage() {
           {lowStock.length === 0 ? (
             <p style={{ margin: 0, color: '#2E6F40', fontWeight: 800 }}>All raw materials are above minimum stock.</p>
           ) : (
-            <div className="table-responsive">
+              <div className="table-responsive admin-scroll-panel admin-scroll-panel--sm">
               <table className="admin-table" style={{ minWidth: '420px', margin: 0 }}>
                 <thead>
                   <tr>
@@ -407,7 +407,7 @@ export default function AdminDashboardPage() {
         {stats?.recentOrders?.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', margin: 0 }}>No orders placed yet.</p>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="admin-scroll-panel admin-scroll-panel--md" style={{ overflowX: 'auto' }}>
             <table className="admin-table" style={{ width: '100%', whiteSpace: 'nowrap' }}>
               <thead>
                 <tr>

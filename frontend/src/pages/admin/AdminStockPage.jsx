@@ -4,6 +4,22 @@ import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 
 const MATERIAL_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'packet', 'box', 'bottle', 'tin', 'tray']
 
+const stockPanelStyle = {
+  background: '#FFFFFF',
+  border: '1px solid rgba(61,37,30,0.1)',
+  borderRadius: '16px',
+  padding: '16px',
+  overflow: 'hidden',
+  display: 'flex',
+  flexDirection: 'column',
+}
+
+const stockScrollStyle = {
+  overflow: 'auto',
+  borderRadius: '10px',
+  border: '1px solid rgba(61,37,30,0.06)',
+}
+
 function StockDialog({ title, note, maxWidth = '560px', onClose, children }) {
   return (
     <div
@@ -224,7 +240,7 @@ export default function AdminStockPage() {
         </div>
       )}
 
-      <div style={{ background: '#FFFFFF', border: '1px solid rgba(61,37,30,0.1)', borderRadius: '16px', padding: '16px' }}>
+      <div style={{ ...stockPanelStyle, height: '330px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
           <div>
             <h3 style={{ margin: 0, color: 'var(--cocoa-dark)' }}>Current Raw Material Stock</h3>
@@ -236,7 +252,7 @@ export default function AdminStockPage() {
             Add Material
           </button>
         </div>
-        <div className="table-responsive">
+        <div className="table-responsive admin-scroll-panel" style={{ ...stockScrollStyle, flex: 1, maxHeight: 'none' }}>
           <table className="admin-table" style={{ margin: 0, minWidth: '720px' }}>
             <thead>
               <tr>
@@ -287,7 +303,7 @@ export default function AdminStockPage() {
         </div>
       </div>
 
-      <div style={{ background: '#FFFFFF', border: '1px solid rgba(61,37,30,0.1)', borderRadius: '16px', padding: '16px' }}>
+      <div style={{ ...stockPanelStyle, height: '300px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
           <div>
             <h3 style={{ margin: 0, color: 'var(--cocoa-dark)' }}>Category Material Rules</h3>
@@ -299,7 +315,7 @@ export default function AdminStockPage() {
             Map Material
           </button>
         </div>
-        <div className="table-responsive">
+        <div className="table-responsive admin-scroll-panel" style={{ ...stockScrollStyle, flex: 1, maxHeight: 'none' }}>
           <table className="admin-table" style={{ margin: 0, minWidth: '640px' }}>
             <thead>
               <tr>
@@ -326,9 +342,9 @@ export default function AdminStockPage() {
         </div>
       </div>
 
-      <div style={{ background: '#FFFFFF', border: '1px solid rgba(61,37,30,0.1)', borderRadius: '16px', padding: '16px' }}>
+      <div style={{ ...stockPanelStyle, height: '330px' }}>
         <h3 style={{ margin: '0 0 12px', color: 'var(--cocoa-dark)' }}>Recent Stock Movements</h3>
-        <div className="table-responsive">
+        <div className="table-responsive admin-scroll-panel" style={{ ...stockScrollStyle, flex: 1, maxHeight: 'none' }}>
           <table className="admin-table" style={{ margin: 0, minWidth: '760px' }}>
             <thead>
               <tr>

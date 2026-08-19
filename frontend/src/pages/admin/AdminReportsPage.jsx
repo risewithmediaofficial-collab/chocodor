@@ -158,6 +158,7 @@ export default function AdminReportsPage() {
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Online vs Physical Counter</span>
                 </div>
 
+                <div className="table-responsive admin-scroll-panel admin-scroll-panel--sm">
                 <table className="admin-table" style={{ margin: 0 }}>
                   <thead>
                     <tr>
@@ -207,6 +208,7 @@ export default function AdminReportsPage() {
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               {/* Payment Methods */}
@@ -221,6 +223,7 @@ export default function AdminReportsPage() {
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>UPI / Cash / Card</span>
                 </div>
 
+                <div className="table-responsive admin-scroll-panel admin-scroll-panel--sm">
                 <table className="admin-table" style={{ margin: 0 }}>
                   <thead>
                     <tr>
@@ -266,6 +269,7 @@ export default function AdminReportsPage() {
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
 
@@ -281,7 +285,7 @@ export default function AdminReportsPage() {
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ranked by units sold</span>
               </div>
 
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-responsive admin-scroll-panel admin-scroll-panel--md">
                 <table className="admin-table" style={{ margin: 0, width: '100%', whiteSpace: 'nowrap' }}>
                   <thead>
                     <tr>

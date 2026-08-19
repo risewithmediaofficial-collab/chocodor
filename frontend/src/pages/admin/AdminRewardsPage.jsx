@@ -125,7 +125,7 @@ export default function AdminRewardsPage() {
         Configured Reward Definitions
       </h3>
 
-      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)', marginBottom: '40px' }}>
+      <div className="table-responsive admin-scroll-panel admin-scroll-panel--md" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)', marginBottom: '24px' }}>
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center' }}>Loading rewards...</div>
         ) : (
@@ -192,7 +192,7 @@ export default function AdminRewardsPage() {
         Customer Coupon Redemptions ({redemptions.length})
       </h3>
 
-      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
+      <div className="table-responsive admin-scroll-panel admin-scroll-panel--md" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {redemptions.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No customer redemptions yet.</div>
         ) : (

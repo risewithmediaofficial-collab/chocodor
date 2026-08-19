@@ -2855,6 +2855,47 @@ body.modal-open {
   border-radius: 4px;
 }
 
+.admin-scroll-panel {
+  max-height: min(58vh, 520px);
+  overflow: auto;
+  margin-bottom: 0;
+}
+
+.admin-scroll-panel--sm {
+  max-height: 300px;
+}
+
+.admin-scroll-panel--md {
+  max-height: 380px;
+}
+
+.admin-scroll-panel--lg {
+  max-height: min(64vh, 620px);
+}
+
+.admin-scroll-panel thead {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #FAF6F0;
+  box-shadow: 0 2px 4px rgba(43, 23, 18, 0.04);
+}
+
+.admin-scroll-panel::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.admin-scroll-panel::-webkit-scrollbar-track {
+  background: rgba(61, 37, 30, 0.04);
+  border-radius: 8px;
+}
+
+.admin-scroll-panel::-webkit-scrollbar-thumb {
+  background: rgba(61, 37, 30, 0.24);
+  border-radius: 8px;
+}
+
 /* POS Layout Classes */
 .pos-step-1-grid {
   display: grid;
@@ -4215,4 +4256,3 @@ body.modal-open {
   border-color: var(--gold) !important;
   box-shadow: 0 4px 14px rgba(240, 193, 75, 0.4) !important;
 }
-

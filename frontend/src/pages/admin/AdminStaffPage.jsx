@@ -174,7 +174,7 @@ export default function AdminStaffPage() {
 
       <section style={{ background: '#FFFFFF', border: '1px solid rgba(61,37,30,0.1)', borderRadius: '16px', padding: '18px' }}>
         <h3 style={{ margin: '0 0 12px', color: 'var(--cocoa-dark)' }}>Staff List & Today Attendance</h3>
-        <div className="table-responsive">
+        <div className="table-responsive admin-scroll-panel admin-scroll-panel--md">
           <table className="admin-table" style={{ margin: 0, minWidth: '900px' }}>
             <thead>
               <tr>

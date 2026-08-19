@@ -89,7 +89,7 @@ export default function AdminRoyaltyPage() {
       </div>
 
       {/* Table */}
-      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
+      <div className="table-responsive admin-scroll-panel admin-scroll-panel--lg" style={{ background: '#FFFFFF', borderRadius: '20px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading audit trail...</div>
         ) : transactions.length === 0 ? (

@@ -110,7 +110,7 @@ export default function AdminOperationsPage() {
           <input className="form-input" placeholder="Notes optional" value={tableForm.notes} onChange={(e) => setTableForm((p) => ({ ...p, notes: e.target.value }))} />
           <button className="btn btn--gold btn--sm" type="submit">Add Table</button>
         </form>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px', maxHeight: '300px', overflowY: 'auto', paddingRight: '4px' }}>
           {(data.tables || []).map((table) => (
             <div key={table.id} style={{ border: '1px solid rgba(61,37,30,0.1)', borderRadius: '12px', padding: '12px', background: table.status === 'EMPTY' ? '#FFFFFF' : '#FAF0E4' }}>
               <strong>{table.name}</strong>
@@ -196,7 +196,7 @@ export default function AdminOperationsPage() {
 
       <section style={{ background: '#FFFFFF', border: '1px solid rgba(61,37,30,0.1)', borderRadius: '16px', padding: '16px' }}>
         <h3 style={{ margin: '0 0 12px', color: 'var(--cocoa-dark)' }}>Recent Operations Logs</h3>
-        <div className="table-responsive">
+        <div className="table-responsive admin-scroll-panel admin-scroll-panel--md">
           <table className="admin-table" style={{ margin: 0, minWidth: '760px' }}>
             <thead><tr><th>Type</th><th>Details</th><th>Amount/Qty</th><th>Time</th></tr></thead>
             <tbody>

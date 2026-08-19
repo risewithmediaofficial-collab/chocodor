@@ -183,7 +183,7 @@ export default function AdminCustomersPage() {
       </div>
 
       {/* ─── SCROLLABLE CUSTOMERS TABLE ─── */}
-      <div className="table-responsive" style={{ background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
+      <div className="table-responsive admin-scroll-panel admin-scroll-panel--lg" style={{ background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading customers...</div>
         ) : filtered.length === 0 ? (
