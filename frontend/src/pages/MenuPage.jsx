@@ -39,8 +39,9 @@ export default function MenuPage() {
   const filteredProducts = products.filter((p) => {
     const matchCategory =
       activeCategory === 'ALL' ||
-      p.category.toLowerCase() === activeCategory.toLowerCase() ||
-      p.categorySlug === activeCategory.toLowerCase()
+      (p.category && p.category.toLowerCase() === activeCategory.toLowerCase()) ||
+      (p.categorySlug && p.categorySlug.toLowerCase() === activeCategory.toLowerCase()) ||
+      p.categoryId === activeCategory
 
     const matchSearch =
       !searchQuery ||
@@ -101,16 +102,26 @@ export default function MenuPage() {
             >
               All Delights ({products.length})
             </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                className={`category-pill ${activeCategory === cat.slug ? 'category-pill--active' : ''}`}
-                onClick={() => setActiveCategory(cat.slug)}
-              >
-                {cat.name} ({cat.count})
-              </button>
-            ))}
+            {categories.map((cat) => {
+              const catProductCount = products.filter(
+                (p) =>
+                  (p.categoryId && (p.categoryId === cat.id || p.categoryId === cat.slug)) ||
+                  (p.categorySlug && p.categorySlug.toLowerCase() === (cat.slug || '').toLowerCase()) ||
+                  (p.category && p.category.toLowerCase() === (cat.name || '').toLowerCase()) ||
+                  (p.category && p.category.toLowerCase() === (cat.slug || '').toLowerCase())
+              ).length
+
+              return (
+                <button
+                  key={cat.id || cat.slug || cat.name}
+                  type="button"
+                  className={`category-pill ${activeCategory === cat.slug ? 'category-pill--active' : ''}`}
+                  onClick={() => setActiveCategory(cat.slug)}
+                >
+                  {cat.name} ({catProductCount})
+                </button>
+              )
+            })}
           </div>
         </ScrollReveal>
 

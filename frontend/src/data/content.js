@@ -15,10 +15,11 @@ export const navLinks = [
 import { PRODUCTS, CATEGORIES } from './products.js'
 
 export const categories = CATEGORIES.map((c) => ({
+  id: c.id,
   name: c.name,
   slug: c.slug,
   color: c.color,
-  count: PRODUCTS.filter((p) => p.categoryId === c.id).length,
+  count: PRODUCTS.filter((p) => p.categoryId === c.id || p.categorySlug === c.slug).length,
 }))
 
 export const allProducts = PRODUCTS

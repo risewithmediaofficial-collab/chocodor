@@ -34,6 +34,13 @@ router.get('/', async (req, res) => {
       }
     })
 
+    const catCountMap = {}
+    for (const p of products) {
+      if (p.category_id) {
+        catCountMap[p.category_id] = (catCountMap[p.category_id] || 0) + 1
+      }
+    }
+
     res.json({
       categories: categories.map((c) => ({
         id: c.id,
@@ -41,6 +48,7 @@ router.get('/', async (req, res) => {
         name: c.name,
         color: c.color,
         sortOrder: c.sort_order,
+        count: catCountMap[c.id] || 0,
       })),
       products: products.map((p) => {
         const cInfo = catMap[p.category_id] || { name: 'Desserts', slug: 'desserts' }

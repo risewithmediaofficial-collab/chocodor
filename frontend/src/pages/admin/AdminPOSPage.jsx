@@ -435,16 +435,25 @@ export default function AdminPOSPage() {
             >
               All Items ({filteredProducts.length})
             </button>
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className={`pos-category-chip ${activeCategory === c.slug || activeCategory === c.id ? 'pos-category-chip--active' : ''}`}
-                onClick={() => setActiveCategory(c.slug || c.id)}
-              >
-                {c.name}
-              </button>
-            ))}
+            {categories.map((c) => {
+              const count = products.filter(
+                (p) =>
+                  p.categoryId === c.id ||
+                  p.category_id === c.id ||
+                  p.categorySlug === c.slug ||
+                  p.category === c.name
+              ).length
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`pos-category-chip ${activeCategory === c.slug || activeCategory === c.id ? 'pos-category-chip--active' : ''}`}
+                  onClick={() => setActiveCategory(c.slug || c.id)}
+                >
+                  {c.name} {count > 0 ? `(${count})` : ''}
+                </button>
+              )
+            })}
           </div>
 
           {/* Products Grid */}

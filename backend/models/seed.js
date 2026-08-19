@@ -174,7 +174,7 @@ export async function seedDefaultData() {
       { id: 'p-39', category_id: 'cat-8', name: 'Tiramisu', price: 249, royalty_points: 18, badge: 'Classic', image: '/images/products/Tiramisu.jpg', description: 'Classic Italian dessert crafted with espresso-soaked ladyfingers, velvety mascarpone cream, and Dutch cocoa dust.', is_featured: 1, is_bestseller: 0, is_available: 1, created_at: now },
 
       // 9. Buns
-      { id: 'p-40', category_id: 'cat-9', name: 'Coffee Bun', price: 129, royalty_points: 8, badge: 'Fresh Baked', image: '/images/products/Coffee_Bun.jpg', description: 'Aromatic Rotiboy-style bun with a crispy coffee-caramel crust and warm, melting buttery center.', is_featured: 0, is_bestseller: 0, is_available: 1, created_at: now },
+      { id: 'p-40', category_id: 'cat-9', name: 'Korean Cheese Bun', price: 129, royalty_points: 8, badge: 'Fresh Baked', image: '/images/products/Korean_Cheese_Bun.jpg', description: 'Freshly baked Korean cream cheese garlic bun drenched in savory herb butter with a creamy, rich center.', is_featured: 0, is_bestseller: 0, is_available: 1, created_at: now },
 
       // 10. Tresleches
       { id: 'p-41', category_id: 'cat-10', name: 'Pistachio Tresleches', price: 239, royalty_points: 18, badge: 'Popular', image: '/images/products/Pistachio_Tresleches.jpg', description: 'Spongy Mexican milk cake soaked in a rich three-milk pistachio bath, crowned with roasted pistachios.', is_featured: 1, is_bestseller: 0, is_available: 1, created_at: now },
@@ -183,6 +183,18 @@ export async function seedDefaultData() {
     ]
 
     await Product.insertMany(initialProducts)
+  } else {
+    // Keep existing p-40 updated to Korean Cheese Bun if currently Coffee Bun
+    await Product.updateOne(
+      { id: 'p-40' },
+      {
+        $set: {
+          name: 'Korean Cheese Bun',
+          image: '/images/products/Korean_Cheese_Bun.jpg',
+          description: 'Freshly baked Korean cream cheese garlic bun drenched in savory herb butter with a creamy, rich center.',
+        },
+      }
+    )
   }
 
   // 5. Seed Rewards Catalog

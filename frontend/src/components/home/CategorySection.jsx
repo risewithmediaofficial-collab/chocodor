@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ScrollReveal, StaggerContainer, StaggerItem } from '../ScrollReveal'
-import { categories } from '../../data/content'
+import { categories, allProducts } from '../../data/content'
 
 export default function CategorySection() {
   const [activeCategory, setActiveCategory] = useState('ALL')
@@ -24,7 +24,7 @@ export default function CategorySection() {
               onClick={() => setActiveCategory('ALL')}
             >
               <span className="category-pill__label">ALL</span>
-              <span className="category-pill__badge">45</span>
+              <span className="category-pill__badge">{allProducts.length}</span>
             </button>
           </StaggerItem>
 
