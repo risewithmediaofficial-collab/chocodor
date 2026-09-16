@@ -4023,8 +4023,13 @@ body.modal-open {
 /* ─── Print Media Styles (80mm Thermal & A4 Receipt Isolation) ─── */
 @media print {
   @page {
+    size: portrait;
     margin: 0;
-    size: auto;
+  }
+
+  *, *:before, *:after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   html,
@@ -4034,6 +4039,7 @@ body.modal-open {
     background: #FFFFFF !important;
     color: #000000 !important;
     width: 100% !important;
+    max-width: 80mm !important;
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
@@ -4072,78 +4078,22 @@ body.modal-open {
   #printable-invoice {
     display: block !important;
     width: 100% !important;
-    max-width: 80mm !important;
+    max-width: 70mm !important;
     margin: 0 auto !important;
-    padding: 4mm !important;
+    padding: 1mm 1mm 3mm 1mm !important;
     background: #FFFFFF !important;
     color: #000000 !important;
+    font-family: 'Courier New', Courier, 'Lucida Console', monospace !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
     box-shadow: none !important;
     border: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 
-
-/* ─── Print Media Styles (80mm Thermal & A4 Receipt Isolation) ─── */
-@media print {
-  @page {
-    margin: 0;
-    size: auto;
-  }
-
-  html,
-  body {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #FFFFFF !important;
-    color: #000000 !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-  }
-
-  /* Hide navigation, sidebar, and non-printable elements */
-  .no-print,
-  .admin-sidebar,
-  .admin-navbar,
-  .navbar,
-  .footer,
-  .product-modal__close {
-    display: none !important;
-  }
-
-  .cart-drawer-overlay {
-    position: static !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: block !important;
-    backdrop-filter: none !important;
-  }
-
-  .product-modal {
-    position: static !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    max-width: 100% !important;
-    overflow: visible !important;
-  }
-
-  #printable-invoice {
-    display: block !important;
-    width: 100% !important;
-    max-width: 80mm !important;
-    margin: 0 auto !important;
-    padding: 4mm !important;
-    background: #FFFFFF !important;
-    color: #000000 !important;
-    box-shadow: none !important;
-    border: none !important;
-  }
-}
 
 /* ─── Category Filter Pills & POS Menu Chips ─── */
 

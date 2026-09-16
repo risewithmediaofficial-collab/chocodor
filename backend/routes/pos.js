@@ -4,6 +4,12 @@ import bcrypt from 'bcryptjs'
 import { Customer, RoyaltyMember, Order, Invoice } from '../models/index.js'
 import { createOrder, updateOrderStatus, getOrderById } from '../services/orderService.js'
 import { generateCustomerQR } from '../services/qrService.js'
+import {
+  initiateTransaction,
+  fetchTransactionStatus,
+  mockInitiateTransaction,
+  mockFetchTransactionStatus,
+} from '../services/pinelabs.js'
 
 const router = express.Router()
 
@@ -257,6 +263,78 @@ router.post('/orders', async (req, res) => {
       customer: customerDetails,
     })
   } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ─── Pine Labs Plutus Cloud — Initiate Terminal Payment ──────────────────────
+/**
+ * POST /pos/pinelabs/initiate
+ * Body: { amount: number, orderId: string }
+ *
+ * Sends the transaction to Pine Labs Cloud. The physical Plutus terminal will
+ * automatically display the payment prompt. Returns a PTRID to track status.
+ */
+router.post('/pinelabs/initiate', async (req, res) => {
+  try {
+    const { amount, orderId } = req.body
+
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({ error: 'A valid amount is required to initiate Pine Labs payment.' })
+    }
+
+    const useMock = process.env.PINELABS_MOCK === 'true'
+
+    const result = useMock
+      ? await mockInitiateTransaction({ amount, orderId })
+      : await initiateTransaction({ amount, orderId })
+
+    res.json({
+      success: true,
+      ptrid: result.ptrid,
+      transactionNumber: result.transactionNumber,
+      sequenceNumber: result.sequenceNumber,
+      mock: useMock,
+    })
+  } catch (err) {
+    console.error('[Pine Labs] Initiate error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ─── Pine Labs Plutus Cloud — Poll Transaction Status ────────────────────────
+/**
+ * GET /pos/pinelabs/status/:ptrid
+ *
+ * Polls Pine Labs Cloud for the current status of a transaction.
+ * The frontend calls this every few seconds until approved or failed.
+ */
+router.get('/pinelabs/status/:ptrid', async (req, res) => {
+  try {
+    const { ptrid } = req.params
+
+    if (!ptrid) {
+      return res.status(400).json({ error: 'PTRID is required.' })
+    }
+
+    const useMock = process.env.PINELABS_MOCK === 'true'
+
+    const result = useMock
+      ? await mockFetchTransactionStatus({ ptrid })
+      : await fetchTransactionStatus({ ptrid })
+
+    res.json({
+      success: true,
+      approved: result.approved,
+      pending: result.pending,
+      status: result.status,
+      responseCode: result.responseCode,
+      responseMessage: result.responseMessage,
+      transactionData: result.transactionData,
+      mock: useMock,
+    })
+  } catch (err) {
+    console.error('[Pine Labs] Status error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

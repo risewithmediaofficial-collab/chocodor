@@ -37,16 +37,16 @@ export default function InvoiceModal({ orderId, invoiceNumber, onClose, autoPrin
   }, [orderId, invoiceNumber])
 
   const handlePrint = () => {
-    printElement('printable-invoice', `Invoice_${invoiceData?.invoice?.invoice_number || 'ChocoDor'}`)
+    printElement('printable-invoice', `Invoice_${invoiceData?.invoice?.invoice_number || 'ChocoDor'}`, printLayout)
   }
 
   useEffect(() => {
     if (!autoPrint || loading || !invoiceData?.invoice) return
     const timer = setTimeout(() => {
-      printElement('printable-invoice', `Invoice_${invoiceData.invoice.invoice_number || 'ChocoDor'}`)
+      printElement('printable-invoice', `Invoice_${invoiceData.invoice.invoice_number || 'ChocoDor'}`, printLayout)
     }, 450)
     return () => clearTimeout(timer)
-  }, [autoPrint, loading, invoiceData])
+  }, [autoPrint, loading, invoiceData, printLayout])
 
   if (loading) {
     return (
@@ -185,107 +185,100 @@ export default function InvoiceModal({ orderId, invoiceNumber, onClose, autoPrin
           <div
             id="printable-invoice"
             style={{
-              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace, sans-serif',
+              fontFamily: printLayout === 'thermal'
+                ? "'Courier New', Courier, 'Lucida Console', monospace"
+                : "Arial, Helvetica, sans-serif",
               color: '#000000',
-              fontSize: '12px',
-              lineHeight: 1.4,
+              fontSize: printLayout === 'thermal' ? '11px' : '12px',
+              lineHeight: 1.25,
               background: '#FFFFFF',
-              maxWidth: printLayout === 'thermal' ? '380px' : '100%',
+              maxWidth: printLayout === 'thermal' ? '280px' : '100%',
               margin: '0 auto',
+              padding: printLayout === 'thermal' ? '4px 2px' : '20px',
+              fontWeight: printLayout === 'thermal' ? 700 : 'normal',
             }}
           >
             {/* Header Section */}
-            <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '6px' }}>
               <img
                 src={logoImg}
                 alt="Logo"
                 style={{
-                  width: '64px',
-                  height: '64px',
-                  margin: '0 auto 6px',
-                  borderRadius: '12px',
+                  width: '40px',
+                  height: '40px',
+                  margin: '0 auto 4px',
+                  borderRadius: '6px',
                   objectFit: 'cover',
                   display: 'block',
+                  filter: 'contrast(140%) grayscale(100%)',
                 }}
               />
 
-              <div style={{ fontWeight: 900, fontSize: '15px', letterSpacing: '0.04em', textTransform: 'uppercase', color: '#000' }}>
+              <div style={{ fontWeight: 900, fontSize: '14px', letterSpacing: '0.04em', textTransform: 'uppercase', color: '#000' }}>
                 {business.name || "Choco D'or"}
               </div>
-              <div style={{ fontSize: '10px', color: '#333', maxWidth: '280px', margin: '2px auto 0' }}>
+              <div style={{ fontSize: '9.5px', color: '#000', maxWidth: '260px', margin: '2px auto 0', lineHeight: 1.15 }}>
                 {storeAddress}
               </div>
-              <div style={{ fontSize: '10px', color: '#333', marginTop: '2px' }}>
-                Phone No-{storePhone}
+              <div style={{ fontSize: '9.5px', color: '#000', marginTop: '1px' }}>
+                Ph: {storePhone}
               </div>
               {Boolean(business.enableGst) && (
-                <div style={{ fontSize: '10px', color: '#333' }}>
+                <div style={{ fontSize: '9px', color: '#000' }}>
                   GSTIN: {storeGst}
                 </div>
               )}
-              <div style={{ fontSize: '10px', color: '#333' }}>
-                FSSAI Reg no: {storeFssai}
+              <div style={{ fontSize: '9px', color: '#000' }}>
+                FSSAI: {storeFssai}
               </div>
-              <div style={{ fontWeight: 800, fontSize: '12px', marginTop: '4px', letterSpacing: '0.05em' }}>
-                Invoice
+              <div style={{ fontWeight: 900, fontSize: '11px', marginTop: '3px', letterSpacing: '0.05em', color: '#000' }}>
+                *** TAX INVOICE ***
               </div>
             </div>
 
             {/* Customer & Bill Identifier Details */}
-            <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontWeight: 800, fontSize: '12px', textTransform: 'uppercase' }}>
-                {invoice.customer_name || 'WALK-IN GUEST'}
+            <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '3px 0', margin: '4px 0', fontSize: '10.5px', color: '#000' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
+                <span style={{ textTransform: 'uppercase' }}>{invoice.customer_name || 'WALK-IN GUEST'}</span>
+                <span>{invoice.customer_mobile || ''}</span>
               </div>
-              {invoice.customer_mobile && (
-                <div style={{ fontSize: '11px', color: '#444' }}>
-                  {invoice.customer_mobile}
-                </div>
-              )}
-            </div>
-
-            <div style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000', padding: '5px 0', margin: '6px 0', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Invoice {invoice.invoice_number}</span>
-                <span>{totalItemsCount} items ({totalItemsCount} Qty)</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                <span style={{ fontWeight: 800 }}>Inv: {invoice.invoice_number}</span>
+                <span>{totalItemsCount} Qty</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                 <span>
                   {new Date(invoice.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}{' '}
                   {new Date(invoice.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
-                <span>Manager</span>
+                <span>Cashier</span>
               </div>
             </div>
 
             {/* Item Table */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', margin: '8px 0 10px', fontSize: '11px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', margin: '3px 0', fontSize: '10.5px', color: '#000' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #000', textAlign: 'left' }}>
-                  <th style={{ padding: '4px 0', fontWeight: 800 }}>Name</th>
-                  <th style={{ padding: '4px 0', textAlign: 'center', width: '30px', fontWeight: 800 }}>Qty</th>
-                  <th style={{ padding: '4px 0', textAlign: 'right', width: '55px', fontWeight: 800 }}>Rate</th>
-                  <th style={{ padding: '4px 0', textAlign: 'right', width: '65px', fontWeight: 800 }}>Amount</th>
+                  <th style={{ padding: '2px 0', fontWeight: 800, color: '#000' }}>ITEM</th>
+                  <th style={{ padding: '2px 0', textAlign: 'center', width: '28px', fontWeight: 800, color: '#000' }}>QTY</th>
+                  <th style={{ padding: '2px 0', textAlign: 'right', width: '50px', fontWeight: 800, color: '#000' }}>RATE</th>
+                  <th style={{ padding: '2px 0', textAlign: 'right', width: '60px', fontWeight: 800, color: '#000' }}>AMT</th>
                 </tr>
               </thead>
               <tbody>
                 {invoice.items?.map((item, idx) => (
                   <tr key={idx} style={{ verticalAlign: 'top' }}>
-                    <td style={{ padding: '5px 0 3px' }}>
-                      <div style={{ fontWeight: 700 }}>{item.product_name_snapshot || item.name}</div>
-                      {Boolean(business.enableGst) && (
-                        <div style={{ fontSize: '9px', color: '#555' }}>
-                          HSN-21050000, CGST 2.5%, SGST 2.5%
-                        </div>
-                      )}
+                    <td style={{ padding: '2px 0 1px' }}>
+                      <div style={{ fontWeight: 700, color: '#000' }}>{item.product_name_snapshot || item.name}</div>
                     </td>
-                    <td style={{ padding: '5px 0 3px', textAlign: 'center' }}>
+                    <td style={{ padding: '2px 0 1px', textAlign: 'center', fontWeight: 700, color: '#000' }}>
                       {item.quantity}
                     </td>
-                    <td style={{ padding: '5px 0 3px', textAlign: 'right' }}>
-                      ₹ {Number(item.unit_price_snapshot || item.price || 0).toFixed(0)}
+                    <td style={{ padding: '2px 0 1px', textAlign: 'right', color: '#000' }}>
+                      {Number(item.unit_price_snapshot || item.price || 0).toFixed(0)}
                     </td>
-                    <td style={{ padding: '5px 0 3px', textAlign: 'right', fontWeight: 700 }}>
-                      ₹ {Number((item.unit_price_snapshot || item.price || 0) * item.quantity).toFixed(2)}
+                    <td style={{ padding: '2px 0 1px', textAlign: 'right', fontWeight: 800, color: '#000' }}>
+                      {Number((item.unit_price_snapshot || item.price || 0) * item.quantity).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -293,102 +286,85 @@ export default function InvoiceModal({ orderId, invoiceNumber, onClose, autoPrin
             </table>
 
             {/* Subtotal and Tax Breakdown */}
-            <div style={{ borderTop: '1px solid #000', paddingTop: '6px', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+            <div style={{ borderTop: '1px solid #000', paddingTop: '4px', fontSize: '10.5px', color: '#000' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
                 <span>Sub Total</span>
                 <span>₹ {Number(taxableSubtotal).toFixed(2)}</span>
               </div>
 
               {Boolean(business.enableGst) && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', color: '#444' }}>
-                    <span>CGST 2.5% on ₹ {Number(taxableSubtotal).toFixed(2)}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px', color: '#000' }}>
+                    <span>CGST 2.5%</span>
                     <span>₹ {cgstAmount.toFixed(2)}</span>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', color: '#444' }}>
-                    <span>SGST 2.5% on ₹ {Number(taxableSubtotal).toFixed(2)}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px', color: '#000' }}>
+                    <span>SGST 2.5%</span>
                     <span>₹ {sgstAmount.toFixed(2)}</span>
                   </div>
                 </>
               )}
 
               {invoice.delivery_charge > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                  <span>Delivery Charge</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
+                  <span>Delivery</span>
                   <span>₹ {Number(invoice.delivery_charge).toFixed(2)}</span>
                 </div>
               )}
 
               {invoice.first_order_discount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', color: '#2E6F40', fontWeight: 700 }}>
-                  <span>First Order Discount</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px', color: '#000', fontWeight: 700 }}>
+                  <span>Discount</span>
                   <span>−₹ {Number(invoice.first_order_discount).toFixed(2)}</span>
                 </div>
               )}
 
               {invoice.reward_discount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', color: '#2E6F40', fontWeight: 700 }}>
-                  <span>Royalty Reward Discount</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px', color: '#000', fontWeight: 700 }}>
+                  <span>Reward Disc</span>
                   <span>−₹ {Number(invoice.reward_discount).toFixed(2)}</span>
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', paddingTop: '4px', borderTop: '1px dashed #999', fontSize: '11px' }}>
-                <span>Bill Total</span>
-                <span>₹ {Number(totalWithTax).toFixed(2)}</span>
-              </div>
-
               {/* Bill Total Rounded (Prominent) */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #000', fontSize: '14px', fontWeight: 900 }}>
-                <span>Bill Total (rounded)</span>
-                <span style={{ fontSize: '16px' }}>₹ {roundedTotal.toFixed(2)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '3px', paddingTop: '3px', borderTop: '1px solid #000', borderBottom: '1px solid #000', fontSize: '13px', fontWeight: 900, color: '#000' }}>
+                <span>TOTAL (ROUNDED)</span>
+                <span style={{ fontSize: '15px' }}>₹ {roundedTotal.toFixed(2)}</span>
               </div>
             </div>
 
             {/* Payment Summary */}
-            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '1px solid #000', fontSize: '11px' }}>
-              <div style={{ fontWeight: 800, marginBottom: '2px' }}>Payment Summary</div>
-              {invoice.payment_method === 'SPLIT' && Array.isArray(invoice.payment_breakdown) && (
-                <div style={{ marginBottom: '3px' }}>
-                  {invoice.payment_breakdown.map((part) => (
-                    <div key={part.method} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{part.method}</span>
-                      <span>Rs. {Number(part.amount || 0).toFixed(2)}</span>
-                    </div>
-                  ))}
+            <div style={{ marginTop: '3px', paddingTop: '2px', fontSize: '10.5px', color: '#000' }}>
+              {invoice.payment_method === 'SPLIT' && Array.isArray(invoice.payment_breakdown) ? (
+                invoice.payment_breakdown.map((part) => (
+                  <div key={part.method} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Paid ({part.method}):</span>
+                    <span>₹ {Number(part.amount || 0).toFixed(2)}</span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Paid ({invoice.payment_method || 'UPI'}):</span>
+                  <span>₹ {roundedTotal.toFixed(2)}</span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>{invoice.payment_method || 'UPI'}</span>
-                <span>₹ {roundedTotal.toFixed(2)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                <span>Balance</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1px' }}>
+                <span>Change Due:</span>
                 <span>₹ 0.00</span>
               </div>
             </div>
 
-            {/* Royalty and Hospitality Note */}
-            <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px dashed #777', textAlign: 'center', fontSize: '10px', color: '#444', lineHeight: 1.35 }}>
-              <p style={{ margin: '0 0 6px', color: '#000', fontWeight: 600 }}>
-                Serving Sweet Indulgence in Every Bite at Choco D&apos;or. Enjoy 100% Pure Couverture Chocolate.
-              </p>
-
-              <p style={{ margin: '0 0 6px', color: '#000', fontWeight: 700 }}>
-                👑 Earned +{invoice.royalty_points_earned || 0} Royalty Points on this order!
-                <br />
-                Your Next Dessert Could Be FREE! Join Our Rewards Program.
-              </p>
-
-              <p style={{ margin: '0 0 4px', color: '#555' }}>
-                For product complaints or suggestions call {storePhone}
-                <br />
-                or email us at contact@chocodor.com
-              </p>
-
-              <div style={{ fontSize: '9px', color: '#888', marginTop: '6px' }}>
-                Powered by <strong>Choco D&apos;or POS System</strong>
+            {/* Royalty and Hospitality Note - Compact 3 Lines */}
+            <div style={{ marginTop: '6px', paddingTop: '4px', borderTop: '1px dashed #000', textAlign: 'center', fontSize: '9.5px', color: '#000', lineHeight: 1.25 }}>
+              <div style={{ fontWeight: 800, color: '#000' }}>
+                👑 +{invoice.royalty_points_earned || 0} Royalty Points Earned!
+              </div>
+              <div style={{ marginTop: '1px', color: '#000' }}>
+                Thank You! Visit Again — Choco D&apos;or
+              </div>
+              <div style={{ fontSize: '8.5px', color: '#000', marginTop: '2px' }}>
+                Helpline: {storePhone}
               </div>
             </div>
           </div>

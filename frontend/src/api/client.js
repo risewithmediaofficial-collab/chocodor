@@ -6,7 +6,7 @@ function getFallbackBaseUrl() {
     const hostname = window.location.hostname || 'localhost'
     return `${protocol}//${hostname}:5008/api`
   }
-  return 'http://localhost:5000/api'
+  return 'http://localhost:5008/api'
 }
 
 function getAuthToken(isAdmin = false) {

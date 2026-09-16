@@ -27,13 +27,44 @@ export async function getStoreSettings(key) {
 
 /**
  * Generates formatted sequence numbers (e.g. CD-2026-000001, INV-2026-000001, KOT-2026-000001)
+ * Robustly finds the highest existing sequence number to avoid duplicate key errors even if records are deleted.
  */
-async function getNextSequenceNumber(prefix, Model) {
-  const count = (await Model.countDocuments()) + 1
+async function getNextSequenceNumber(prefix, Model, explicitField) {
+  const fieldName =
+    explicitField ||
+    (prefix === 'CD'
+      ? 'order_number'
+      : prefix === 'INV'
+      ? 'invoice_number'
+      : prefix === 'KOT'
+      ? 'kot_number'
+      : 'order_number')
   const year = new Date().getFullYear()
-  const padded = String(count).padStart(6, '0')
-  return `${prefix}-${year}-${padded}`
+  const prefixPattern = new RegExp(`^${prefix}-${year}-(\\d+)$`)
+
+  const highestDoc = await Model.findOne({ [fieldName]: prefixPattern })
+    .sort({ [fieldName]: -1 })
+    .select(fieldName)
+    .lean()
+
+  let nextSeq = 1
+  if (highestDoc && highestDoc[fieldName]) {
+    const match = String(highestDoc[fieldName]).match(prefixPattern)
+    if (match && match[1]) {
+      nextSeq = parseInt(match[1], 10) + 1
+    }
+  }
+
+  while (true) {
+    const candidate = `${prefix}-${year}-${String(nextSeq).padStart(6, '0')}`
+    const exists = await Model.exists({ [fieldName]: candidate })
+    if (!exists) {
+      return candidate
+    }
+    nextSeq++
+  }
 }
+
 
 function normalizePaymentBreakdown(paymentMethod, paymentBreakdown = [], totalAmount = 0) {
   if (paymentMethod !== 'SPLIT') return []
@@ -346,9 +377,9 @@ export async function createOrder({
   })
 
   const orderId = `ord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
-  const orderNumber = await getNextSequenceNumber('CD', Order)
-  const invoiceNumber = await getNextSequenceNumber('INV', Invoice)
-  const kotNumber = await getNextSequenceNumber('KOT', KOT)
+  const orderNumber = await getNextSequenceNumber('CD', Order, 'order_number')
+  const invoiceNumber = await getNextSequenceNumber('INV', Invoice, 'invoice_number')
+  const kotNumber = await getNextSequenceNumber('KOT', KOT, 'kot_number')
   const now = new Date().toISOString()
 
   let initialStatus = 'NEW'

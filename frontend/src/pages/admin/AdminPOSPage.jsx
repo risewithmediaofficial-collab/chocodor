@@ -53,7 +53,13 @@ export default function AdminPOSPage() {
   const [autoPrintInvoice, setAutoPrintInvoice] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  useBodyScrollLock(Boolean(completedData || activeInvoiceNumber || custModalOpen))
+  // Pine Labs Terminal State
+  const [pinelabsState, setPinelabsState] = useState(null) // null | 'waiting' | 'approved' | 'failed'
+  const [pinelabsPtrid, setPinelabsPtrid] = useState('')
+  const [pinelabsError, setPinelabsError] = useState('')
+  const [pinelabsPollRef, setPinelabsPollRef] = useState(null) // interval ref
+
+  useBodyScrollLock(Boolean(completedData || activeInvoiceNumber || custModalOpen || pinelabsState))
 
   // Load Menu Data
   useEffect(() => {
@@ -237,6 +243,130 @@ export default function AdminPOSPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // Pine Labs Plutus Terminal Payment Flow
+  const handlePineLabsPayment = async () => {
+    if (cartItems.length === 0) {
+      alert('Please select at least one item before charging Pine Labs terminal.')
+      return
+    }
+    if (isSplitPayment && Math.abs(splitBalance) > 0.01) {
+      alert(`Split payment must equal bill total. Balance: ${formatPrice(splitBalance)}`)
+      return
+    }
+
+    setPinelabsError('')
+    setPinelabsState('waiting')
+    setPinelabsPtrid('')
+    setSubmitting(true)
+
+    try {
+      // 1. Initiate Pine Labs transaction → get PTRID
+      const initRes = await apiRequest('/pos/pinelabs/initiate', {
+        method: 'POST',
+        isAdmin: true,
+        body: { amount: grandTotal, orderId: `CDR-POS-${Date.now()}` },
+      })
+
+      if (!initRes.success || !initRes.ptrid) {
+        throw new Error(initRes.error || 'Pine Labs did not return a PTRID.')
+      }
+
+      const ptrid = initRes.ptrid
+      setPinelabsPtrid(ptrid)
+
+      // 2. Poll status every 4 seconds until approved or failed
+      const MAX_POLLS = 45 // 3 minutes max
+      let polls = 0
+
+      const interval = setInterval(async () => {
+        polls++
+        if (polls > MAX_POLLS) {
+          clearInterval(interval)
+          setPinelabsState('failed')
+          setPinelabsError('Payment timed out after 3 minutes. Please retry or use another method.')
+          setSubmitting(false)
+          return
+        }
+
+        try {
+          const statusRes = await apiRequest(`/pos/pinelabs/status/${encodeURIComponent(ptrid)}`, { isAdmin: true })
+
+          if (statusRes.approved) {
+            clearInterval(interval)
+            setPinelabsState('approved')
+
+            // 3. Complete the order normally after terminal approves
+            setTimeout(async () => {
+              try {
+                const cleanMobile = isWalkInGuest ? '' : customerMobile.replace(/\D/g, '')
+                const orderPayload = {
+                  customerId: selectedCustomer ? selectedCustomer.id : null,
+                  customerName: isWalkInGuest ? 'Walk-in Guest' : customerName.trim() || 'Walk-in Guest',
+                  customerMobile: cleanMobile || '9999999999',
+                  orderType,
+                  tableOrTokenNo: tableNo,
+                  items: cartItems.map((i) => ({ productId: i.id, quantity: i.quantity, addons: i.addons || [] })),
+                  paymentMethod: 'CARD',
+                  paymentBreakdown: [],
+                  notes: `${notes || ''}${notes ? '\n' : ''}Pine Labs Terminal | PTRID: ${ptrid} | TxnStatus: APPROVED`,
+                  autoComplete: true,
+                  holdBill: false,
+                }
+
+                const res = await apiRequest('/pos/orders', { method: 'POST', isAdmin: true, body: orderPayload })
+
+                const selectedTable = diningTables.find((t) => t.name === tableNo)
+                if (selectedTable && orderType === 'DINE_IN') {
+                  await apiRequest(`/admin/operations/tables/${selectedTable.id}`, {
+                    method: 'PATCH',
+                    isAdmin: true,
+                    body: { status: 'OCCUPIED', activeOrderId: res.order?.id || '' },
+                  }).catch(() => {})
+                }
+
+                setPinelabsState(null)
+                setPinelabsPtrid('')
+                setCompletedData({ ...res, holdBill: false })
+                clearCart()
+              } catch (orderErr) {
+                setPinelabsState('failed')
+                setPinelabsError(`Payment approved by terminal but order creation failed: ${orderErr.message}`)
+              } finally {
+                setSubmitting(false)
+              }
+            }, 1200)
+          } else if (!statusRes.pending) {
+            // Explicitly failed (not pending, not approved)
+            clearInterval(interval)
+            setPinelabsState('failed')
+            setPinelabsError(
+              statusRes.responseMessage || `Transaction declined by terminal. Code: ${statusRes.responseCode || 'N/A'}`
+            )
+            setSubmitting(false)
+          }
+          // If still pending, keep polling silently
+        } catch (pollErr) {
+          console.warn('[Pine Labs] Poll error (will retry):', pollErr.message)
+        }
+      }, 4000)
+
+      setPinelabsPollRef(interval)
+    } catch (err) {
+      setPinelabsState('failed')
+      setPinelabsError(err.message || 'Failed to connect to Pine Labs.')
+      setSubmitting(false)
+    }
+  }
+
+  const cancelPinelabs = () => {
+    if (pinelabsPollRef) clearInterval(pinelabsPollRef)
+    setPinelabsState(null)
+    setPinelabsPtrid('')
+    setPinelabsError('')
+    setPinelabsPollRef(null)
+    setSubmitting(false)
   }
 
   const filteredProducts = products.filter((p) => {
@@ -748,7 +878,7 @@ export default function AdminPOSPage() {
               />
               Split payment
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
               {['UPI', 'CASH', 'CARD'].map((m) => (
                 <button
                   key={m}
@@ -761,6 +891,23 @@ export default function AdminPOSPage() {
                   {m === 'UPI' ? '📱 UPI' : m === 'CASH' ? '💵 CASH' : '💳 CARD'}
                 </button>
               ))}
+              <button
+                type="button"
+                className={`btn btn--sm ${paymentMethod === 'PINE_LABS' ? 'btn--gold' : 'btn--outline'}`}
+                disabled={isSplitPayment}
+                style={{
+                  padding: '8px 4px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  opacity: isSplitPayment ? 0.55 : 1,
+                  border: paymentMethod === 'PINE_LABS' ? '2px solid #005BAA' : undefined,
+                  background: paymentMethod === 'PINE_LABS' ? '#E8F0FB' : undefined,
+                  color: paymentMethod === 'PINE_LABS' ? '#005BAA' : undefined,
+                }}
+                onClick={() => setPaymentMethod('PINE_LABS')}
+              >
+                🏦 Pine Labs
+              </button>
             </div>
             {isSplitPayment && (
               <div style={{ marginTop: '10px', background: '#FAF6F0', borderRadius: '12px', padding: '10px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
@@ -798,15 +945,46 @@ export default function AdminPOSPage() {
           </div>
 
           {/* Settle Bill & Print Button */}
-          <button
-            type="button"
-            disabled={submitting || cartItems.length === 0}
-            className="btn btn--gold btn--full"
-            style={{ padding: '14px', fontSize: '14px', fontWeight: 900 }}
-            onClick={() => handleCheckoutBill({ holdBill: false })}
-          >
-            {submitting ? 'Generating Bill...' : `✓ Complete Bill & Create Account (${formatPrice(grandTotal)})`}
-          </button>
+          {paymentMethod === 'PINE_LABS' && !isSplitPayment ? (
+            <button
+              type="button"
+              id="pos-pinelabs-charge-btn"
+              disabled={submitting || cartItems.length === 0}
+              style={{
+                width: '100%',
+                padding: '14px',
+                fontSize: '14px',
+                fontWeight: 900,
+                borderRadius: 'var(--radius-pill)',
+                border: '2px solid #005BAA',
+                background: cartItems.length === 0 || submitting
+                  ? '#E0E0E0'
+                  : 'linear-gradient(135deg, #005BAA, #003F7D)',
+                color: cartItems.length === 0 || submitting ? '#999' : '#FFFFFF',
+                cursor: cartItems.length === 0 || submitting ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 6px 20px rgba(0,91,170,0.3)',
+                transition: 'all 0.2s',
+              }}
+              onClick={handlePineLabsPayment}
+            >
+              <span style={{ fontSize: '1.3rem' }}>🏦</span>
+              {submitting ? 'Connecting to Terminal...' : `Charge Pine Labs Terminal (${formatPrice(grandTotal)})`}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={submitting || cartItems.length === 0}
+              className="btn btn--gold btn--full"
+              style={{ padding: '14px', fontSize: '14px', fontWeight: 900 }}
+              onClick={() => handleCheckoutBill({ holdBill: false })}
+            >
+              {submitting ? 'Generating Bill...' : `✓ Complete Bill & Create Account (${formatPrice(grandTotal)})`}
+            </button>
+          )}
           <button
             type="button"
             disabled={submitting || cartItems.length === 0}
@@ -818,6 +996,220 @@ export default function AdminPOSPage() {
           </button>
         </div>
       </div>
+
+      {/* ─── PINE LABS TERMINAL WAITING MODAL ─── */}
+      {pinelabsState && (
+        <div
+          className="cart-drawer-overlay"
+          style={{ backdropFilter: 'blur(6px)' }}
+        >
+          <div
+            className="product-modal"
+            style={{
+              maxWidth: '420px',
+              padding: '36px 30px',
+              textAlign: 'center',
+              background: pinelabsState === 'approved'
+                ? 'linear-gradient(135deg, #E8F7EE, #FFFFFF)'
+                : pinelabsState === 'failed'
+                ? 'linear-gradient(135deg, #FEE8E8, #FFFFFF)'
+                : '#FFFFFF',
+              border: pinelabsState === 'approved'
+                ? '2px solid #2E6F40'
+                : pinelabsState === 'failed'
+                ? '2px solid #BA1B1B'
+                : '2px solid #005BAA',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* State Icon */}
+            <div style={{ fontSize: '3.5rem', marginBottom: '10px', lineHeight: 1 }}>
+              {pinelabsState === 'approved' ? '✅' : pinelabsState === 'failed' ? '❌' : '🏦'}
+            </div>
+
+            {/* Title */}
+            <h2 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '1.3rem',
+              color: pinelabsState === 'approved' ? '#2E6F40'
+                : pinelabsState === 'failed' ? '#BA1B1B'
+                : '#005BAA',
+              marginBottom: '6px',
+            }}>
+              {pinelabsState === 'approved'
+                ? 'Payment Approved! 🎉'
+                : pinelabsState === 'failed'
+                ? 'Payment Failed'
+                : 'Waiting for Terminal...'}
+            </h2>
+
+            {/* Amount */}
+            <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--cocoa-dark)', marginBottom: '16px' }}>
+              {formatPrice(grandTotal)}
+            </div>
+
+            {/* Waiting Spinner + Instructions */}
+            {pinelabsState === 'waiting' && (
+              <>
+                {/* Animated pulse ring */}
+                <div style={{ position: 'relative', width: '60px', height: '60px', margin: '0 auto 16px' }}>
+                  <div style={{
+                    position: 'absolute', inset: 0, borderRadius: '50%',
+                    border: '3px solid #005BAA',
+                    animation: 'pinelabs-pulse 1.4s ease-in-out infinite',
+                  }} />
+                  <div style={{
+                    position: 'absolute', inset: '8px', borderRadius: '50%',
+                    border: '3px solid rgba(0,91,170,0.4)',
+                    animation: 'pinelabs-pulse 1.4s ease-in-out 0.5s infinite',
+                  }} />
+                  <div style={{
+                    position: 'absolute', inset: '20px', borderRadius: '50%',
+                    background: '#005BAA',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#FFF', fontSize: '10px', fontWeight: 900,
+                  }}>
+                    💳
+                  </div>
+                </div>
+
+                <style>{`
+                  @keyframes pinelabs-pulse {
+                    0%, 100% { transform: scale(1); opacity: 1; }
+                    50% { transform: scale(1.18); opacity: 0.5; }
+                  }
+                `}</style>
+
+                <div style={{
+                  background: '#EEF4FB',
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  marginBottom: '16px',
+                  textAlign: 'left',
+                  fontSize: '13px',
+                  lineHeight: 1.6,
+                  color: '#003F7D',
+                }}>
+                  <div style={{ fontWeight: 800, marginBottom: '6px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span>📟</span> Ask the customer to:
+                  </div>
+                  <ol style={{ margin: '0 0 0 16px', padding: 0 }}>
+                    <li>Look at the Pine Labs terminal</li>
+                    <li>Tap, swipe, or insert their card</li>
+                    <li>Enter PIN if prompted</li>
+                  </ol>
+                </div>
+
+                {pinelabsPtrid && (
+                  <div style={{
+                    background: '#F5F5F5',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    marginBottom: '14px',
+                    fontSize: '11px',
+                    color: '#666',
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                  }}>
+                    <strong>PTRID:</strong> {pinelabsPtrid}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={cancelPinelabs}
+                  style={{
+                    width: '100%',
+                    padding: '11px',
+                    background: 'none',
+                    border: '1px solid #BA1B1B',
+                    borderRadius: 'var(--radius-pill)',
+                    color: '#BA1B1B',
+                    fontWeight: 800,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✕ Cancel & Use Another Method
+                </button>
+              </>
+            )}
+
+            {/* Approved State */}
+            {pinelabsState === 'approved' && (
+              <div style={{
+                background: '#E2F0E6',
+                borderRadius: '12px',
+                padding: '14px',
+                color: '#2E6F40',
+                fontWeight: 800,
+                fontSize: '13px',
+              }}>
+                Terminal approved! Creating order record...
+              </div>
+            )}
+
+            {/* Failed State */}
+            {pinelabsState === 'failed' && (
+              <>
+                <div style={{
+                  background: '#FDECEA',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  color: '#BA1B1B',
+                  fontSize: '13px',
+                  marginBottom: '14px',
+                  textAlign: 'left',
+                }}>
+                  <strong>Error:</strong> {pinelabsError || 'Transaction failed.'}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '11px',
+                      background: 'linear-gradient(135deg, #005BAA, #003F7D)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-pill)',
+                      color: '#FFF',
+                      fontWeight: 900,
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      cancelPinelabs()
+                      setTimeout(() => handlePineLabsPayment(), 100)
+                    }}
+                  >
+                    🔄 Retry Pine Labs
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '11px',
+                      background: 'none',
+                      border: '1px solid #666',
+                      borderRadius: 'var(--radius-pill)',
+                      color: '#444',
+                      fontWeight: 800,
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      cancelPinelabs()
+                      setPaymentMethod('CASH')
+                    }}
+                  >
+                    Switch to Cash
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ─── SUCCESS & ACCOUNT ACTIVATION MODAL ─── */}
       {completedData && (

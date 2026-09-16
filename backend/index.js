@@ -13,7 +13,7 @@ import settingsRoutes from './routes/settings.js'
 import reportsRoutes from './routes/reports.js'
 
 const app = express()
-const PORT = process.env.PORT || 5000
+const PORT = process.env.PORT || 5008
 
 // Middlewares
 app.use(cors())
@@ -110,8 +110,11 @@ app.get('/api/health', (req, res) => {
 // Connect MongoDB and Start Express Server
 async function startServer() {
   await connectMongoDB()
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`🍫 Choco D'or Backend running on http://localhost:${PORT} with MongoDB`)
+  })
+  server.on('error', (err) => {
+    console.error(`❌ Server error on port ${PORT}:`, err.message)
   })
 }
 
