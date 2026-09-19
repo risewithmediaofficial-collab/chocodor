@@ -96,15 +96,31 @@ async function deductCategoryStockForOrder(orderId, orderNumber, evaluatedItems)
   const consumptionByMaterial = new Map()
 
   for (const item of evaluatedItems) {
-    if (!item.categoryId) continue
-    const recipes = await CategoryMaterial.find({ category_id: item.categoryId }).lean()
-    for (const recipe of recipes) {
-      const consumeQty = Number(recipe.quantity_per_item || 0) * item.quantity
-      if (consumeQty <= 0) continue
-      consumptionByMaterial.set(
-        recipe.material_id,
-        (consumptionByMaterial.get(recipe.material_id) || 0) + consumeQty
-      )
+    // 1. Deduct for category-level recipe rules
+    if (item.categoryId) {
+      const catRecipes = await CategoryMaterial.find({ category_id: item.categoryId }).lean()
+      for (const recipe of catRecipes) {
+        const consumeQty = Number(recipe.quantity_per_item || 0) * item.quantity
+        if (consumeQty <= 0) continue
+        consumptionByMaterial.set(
+          recipe.material_id,
+          (consumptionByMaterial.get(recipe.material_id) || 0) + consumeQty
+        )
+      }
+    }
+
+    // 2. Deduct for product-level recipe rules
+    const pId = item.productId || item.id
+    if (pId) {
+      const prodRecipes = await CategoryMaterial.find({ product_id: pId }).lean()
+      for (const recipe of prodRecipes) {
+        const consumeQty = Number(recipe.quantity_per_item || 0) * item.quantity
+        if (consumeQty <= 0) continue
+        consumptionByMaterial.set(
+          recipe.material_id,
+          (consumptionByMaterial.get(recipe.material_id) || 0) + consumeQty
+        )
+      }
     }
   }
 
@@ -140,20 +156,33 @@ async function reverseCategoryStockForOrder(order) {
 
   for (const item of items) {
     const product = await Product.findOne({ id: item.product_id }).lean()
-    if (!product?.category_id) continue
     evaluatedItems.push({
-      categoryId: product.category_id,
+      productId: item.product_id,
+      categoryId: product?.category_id || null,
       quantity: item.quantity,
     })
   }
 
   const reversalByMaterial = new Map()
   for (const item of evaluatedItems) {
-    const recipes = await CategoryMaterial.find({ category_id: item.categoryId }).lean()
-    for (const recipe of recipes) {
-      const qty = Number(recipe.quantity_per_item || 0) * item.quantity
-      if (qty <= 0) continue
-      reversalByMaterial.set(recipe.material_id, (reversalByMaterial.get(recipe.material_id) || 0) + qty)
+    // 1. Reversal for category-level recipe rules
+    if (item.categoryId) {
+      const catRecipes = await CategoryMaterial.find({ category_id: item.categoryId }).lean()
+      for (const recipe of catRecipes) {
+        const qty = Number(recipe.quantity_per_item || 0) * item.quantity
+        if (qty <= 0) continue
+        reversalByMaterial.set(recipe.material_id, (reversalByMaterial.get(recipe.material_id) || 0) + qty)
+      }
+    }
+
+    // 2. Reversal for product-level recipe rules
+    if (item.productId) {
+      const prodRecipes = await CategoryMaterial.find({ product_id: item.productId }).lean()
+      for (const recipe of prodRecipes) {
+        const qty = Number(recipe.quantity_per_item || 0) * item.quantity
+        if (qty <= 0) continue
+        reversalByMaterial.set(recipe.material_id, (reversalByMaterial.get(recipe.material_id) || 0) + qty)
+      }
     }
   }
 

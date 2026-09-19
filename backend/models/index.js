@@ -77,10 +77,11 @@ const rawMaterialSchema = new mongoose.Schema({
   updated_at: { type: String, default: () => new Date().toISOString() },
 })
 
-// 7. Category Material Recipe Model
+// 7. Category & Product Material Recipe Model
 const categoryMaterialSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true, index: true },
-  category_id: { type: String, required: true, index: true },
+  category_id: { type: String, default: null, index: true },
+  product_id: { type: String, default: null, index: true },
   material_id: { type: String, required: true, index: true },
   quantity_per_item: { type: Number, required: true },
   created_at: { type: String, default: () => new Date().toISOString() },

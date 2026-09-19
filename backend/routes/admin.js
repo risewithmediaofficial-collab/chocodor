@@ -505,11 +505,12 @@ router.patch('/orders/:id/settle-payment', adminAuth, async (req, res) => {
   }
 })
 
-// Stock Management: raw materials, category recipes, and movement ledger
+// Stock Management: raw materials, category/product recipes, and movement ledger
 router.get('/stock', adminAuth, async (req, res) => {
   try {
-    const [categories, materials, categoryMaterials, movements] = await Promise.all([
+    const [categories, products, materials, categoryMaterials, movements] = await Promise.all([
       Category.find().sort({ sort_order: 1 }).lean(),
+      Product.find().sort({ name: 1 }).lean(),
       RawMaterial.find({ is_active: 1 }).sort({ name: 1 }).lean(),
       CategoryMaterial.find().lean(),
       StockMovement.find().sort({ created_at: -1 }).limit(80).lean(),
@@ -519,14 +520,25 @@ router.get('/stock', adminAuth, async (req, res) => {
     for (const material of materials) materialMap[material.id] = material
     const categoryMap = {}
     for (const category of categories) categoryMap[category.id] = category
+    const productMap = {}
+    for (const product of products) productMap[product.id] = product
 
     res.json({
       categories,
+      products: products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        categoryId: p.category_id,
+        categoryName: categoryMap[p.category_id]?.name || '',
+        price: p.price,
+        isAvailable: p.is_available,
+      })),
       materials,
       categoryMaterials: categoryMaterials.map((row) => ({
         ...row,
         material: materialMap[row.material_id] || null,
-        category: categoryMap[row.category_id] || null,
+        category: row.category_id ? categoryMap[row.category_id] || null : null,
+        product: row.product_id ? productMap[row.product_id] || null : null,
       })),
       movements: movements.map((row) => ({
         ...row,
@@ -644,25 +656,65 @@ router.post('/stock/materials/:id/adjust', adminAuth, async (req, res) => {
 
 router.post('/stock/category-materials', adminAuth, async (req, res) => {
   try {
-    const { categoryId, materialId, quantityPerItem } = req.body
-    if (!categoryId || !materialId) return res.status(400).json({ error: 'Category and material are required' })
+    const { categoryId, categoryIds, productId, productIds, materialId, quantityPerItem } = req.body
+    if (!materialId) return res.status(400).json({ error: 'Material is required' })
     const qty = Number(quantityPerItem || 0)
     if (qty <= 0) return res.status(400).json({ error: 'Quantity per item must be greater than 0' })
 
-    const existing = await CategoryMaterial.findOne({ category_id: categoryId, material_id: materialId })
-    if (existing) {
-      await CategoryMaterial.updateOne({ id: existing.id }, { quantity_per_item: qty })
-      return res.json({ success: true, message: 'Category material updated' })
+    const targetCategoryIds = Array.isArray(categoryIds) && categoryIds.length > 0
+      ? categoryIds.filter(Boolean)
+      : (categoryId ? [categoryId] : [])
+
+    const targetProductIds = Array.isArray(productIds) && productIds.length > 0
+      ? productIds.filter(Boolean)
+      : (productId ? [productId] : [])
+
+    if (targetCategoryIds.length === 0 && targetProductIds.length === 0) {
+      return res.status(400).json({ error: 'Please select at least one category or product' })
     }
 
-    await CategoryMaterial.create({
-      id: `cm_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-      category_id: categoryId,
-      material_id: materialId,
-      quantity_per_item: qty,
-      created_at: new Date().toISOString(),
-    })
-    res.status(201).json({ success: true })
+    const now = new Date().toISOString()
+    const saved = []
+
+    for (const catId of targetCategoryIds) {
+      const existing = await CategoryMaterial.findOne({ category_id: catId, material_id: materialId })
+      if (existing) {
+        await CategoryMaterial.updateOne({ id: existing.id }, { quantity_per_item: qty })
+        saved.push(existing.id)
+      } else {
+        const id = `cm_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
+        await CategoryMaterial.create({
+          id,
+          category_id: catId,
+          product_id: null,
+          material_id: materialId,
+          quantity_per_item: qty,
+          created_at: now,
+        })
+        saved.push(id)
+      }
+    }
+
+    for (const prodId of targetProductIds) {
+      const existing = await CategoryMaterial.findOne({ product_id: prodId, material_id: materialId })
+      if (existing) {
+        await CategoryMaterial.updateOne({ id: existing.id }, { quantity_per_item: qty })
+        saved.push(existing.id)
+      } else {
+        const id = `cm_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
+        await CategoryMaterial.create({
+          id,
+          category_id: null,
+          product_id: prodId,
+          material_id: materialId,
+          quantity_per_item: qty,
+          created_at: now,
+        })
+        saved.push(id)
+      }
+    }
+
+    res.status(201).json({ success: true, count: saved.length })
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
