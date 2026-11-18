@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAdminAuth } from '../../context/AdminAuthContext'
 import logoImg from '../../assets/logo.jpg'
 
 export default function AdminLoginPage() {
   const { login } = useAdminAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isExpired = searchParams.get('expired') === '1'
 
   const [email, setEmail] = useState('admin@chocodor.com')
   const [password, setPassword] = useState('chocodor2026')
@@ -43,6 +45,13 @@ export default function AdminLoginPage() {
             Krishnagiri Store Management &amp; Royalty Portal
           </p>
         </div>
+
+        {isExpired && !error && (
+          <div style={{ background: 'rgba(217, 119, 6, 0.1)', color: '#B45309', border: '1px solid rgba(217, 119, 6, 0.2)', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🔒</span>
+            <span>Your admin session has expired or is invalid. Please sign in again.</span>
+          </div>
+        )}
 
         {error && (
           <div style={{ background: 'rgba(186, 27, 27, 0.1)', color: '#BA1B1B', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>

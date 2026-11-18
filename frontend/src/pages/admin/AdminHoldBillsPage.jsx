@@ -6,6 +6,7 @@ import InvoiceModal from '../../components/InvoiceModal'
 export default function AdminHoldBillsPage() {
   const [bills, setBills] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [settlingId, setSettlingId] = useState(null)
   const [paymentMethods, setPaymentMethods] = useState({})
   const [splitPayments, setSplitPayments] = useState({})
@@ -14,10 +15,12 @@ export default function AdminHoldBillsPage() {
   const loadBills = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const data = await apiRequest('/admin/hold-bills', { isAdmin: true })
       setBills(data.bills || [])
     } catch (err) {
-      alert(`Unable to load held bills: ${err.message}`)
+      console.error('Unable to load held bills:', err)
+      setError(err.message || 'Unable to load held bills')
     } finally {
       setLoading(false)
     }
@@ -89,6 +92,13 @@ export default function AdminHoldBillsPage() {
           Refresh
         </button>
       </div>
+
+      {error && (
+        <div style={{ background: '#FFF1F0', border: '1px solid #FFCCC7', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: '#CF1322', fontSize: '13px', fontWeight: 600 }}>⚠️ {error}</span>
+          <button type="button" className="btn btn--outline btn--sm" onClick={loadBills}>Retry</button>
+        </div>
+      )}
 
       <div className="table-responsive admin-scroll-panel admin-scroll-panel--lg" style={{ background: '#FFFFFF', borderRadius: '18px', border: '1px solid rgba(61,37,30,0.1)' }}>
         {loading ? (

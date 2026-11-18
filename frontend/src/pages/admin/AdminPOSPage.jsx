@@ -73,7 +73,7 @@ export default function AdminPOSPage() {
           setCategories(prodData.categories)
         }
         const opsData = await apiRequest('/admin/operations', { isAdmin: true })
-        setDiningTables(opsData.tables || [])
+        setDiningTables(opsData?.tables || [])
       } catch (err) {
         console.warn('Backend unavailable, using static POS menu:', err.message)
       }

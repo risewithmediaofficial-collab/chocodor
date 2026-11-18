@@ -101,6 +101,7 @@ function BarChart({ title, subtitle, bars }) {
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [activeInvoiceNumber, setActiveInvoiceNumber] = useState(null)
@@ -108,6 +109,7 @@ export default function AdminDashboardPage() {
   const loadStats = async () => {
     try {
       setLoading(true)
+      setError(null)
       const params = new URLSearchParams()
       if (fromDate) params.append('fromDate', fromDate)
       if (toDate) params.append('toDate', toDate)
@@ -115,6 +117,7 @@ export default function AdminDashboardPage() {
       setStats(data)
     } catch (err) {
       console.error('Failed to load dashboard stats:', err)
+      setError(err.message || 'Failed to load dashboard statistics')
     } finally {
       setLoading(false)
     }
@@ -176,6 +179,13 @@ export default function AdminDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {error && (
+        <div style={{ background: '#FFF1F0', border: '1px solid #FFCCC7', borderRadius: '12px', padding: '12px 16px', marginBottom: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: '#CF1322', fontSize: '13px', fontWeight: 600 }}>⚠️ {error}</span>
+          <button type="button" className="btn btn--outline btn--sm" onClick={loadStats}>Retry</button>
+        </div>
+      )}
 
       {/* Date-to-Date Range Filter */}
       <DateRangeFilter

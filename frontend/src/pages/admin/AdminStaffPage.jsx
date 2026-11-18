@@ -22,6 +22,7 @@ const ROLES = ['ADMIN', 'BILLING_STAFF', 'KITCHEN_STAFF']
 export default function AdminStaffPage() {
   const [data, setData] = useState({ staff: [], attendance: [], today: '' })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -35,10 +36,18 @@ export default function AdminStaffPage() {
   const load = async () => {
     try {
       setLoading(true)
+      setError(null)
       const res = await apiRequest('/admin/staff', { isAdmin: true })
-      setData(res)
+      if (res) {
+        setData({
+          staff: Array.isArray(res.staff) ? res.staff : [],
+          attendance: Array.isArray(res.attendance) ? res.attendance : [],
+          today: res.today || '',
+        })
+      }
     } catch (err) {
-      alert(`Staff load failed: ${err.message}`)
+      console.error('Staff load failed:', err)
+      setError(err.message || 'Staff load failed')
     } finally {
       setLoading(false)
     }
@@ -132,6 +141,13 @@ export default function AdminStaffPage() {
         </p>
       </div>
 
+      {error && (
+        <div style={{ background: '#FFF1F0', border: '1px solid #FFCCC7', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: '#CF1322', fontSize: '13px', fontWeight: 600 }}>⚠️ {error}</span>
+          <button type="button" className="btn btn--outline btn--sm" onClick={load}>Retry</button>
+        </div>
+      )}
+
       <section style={{ background: '#FFFFFF', border: '1px solid rgba(61,37,30,0.1)', borderRadius: '16px', padding: '18px' }}>
         <h3 style={{ margin: '0 0 12px', color: 'var(--cocoa-dark)' }}>{editingId ? 'Edit Staff Access' : 'Create Staff Login'}</h3>
         <form onSubmit={saveStaff} style={{ display: 'grid', gap: '12px' }}>
@@ -187,7 +203,7 @@ export default function AdminStaffPage() {
               </tr>
             </thead>
             <tbody>
-              {data.staff.map((staff) => {
+              {(data?.staff || []).map((staff) => {
                 const attendance = attendanceByStaff[staff.id]
                 return (
                   <tr key={staff.id} style={{ opacity: staff.isActive ? 1 : 0.55 }}>

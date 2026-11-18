@@ -8,6 +8,25 @@ import { createRoyaltyMember, getMemberByCustomerId } from '../services/royaltyS
 const router = express.Router()
 export const JWT_SECRET = process.env.JWT_SECRET || 'chocodor-super-secret-token-key-2026'
 
+const CUSTOMER_JWT_SECRETS = [
+  process.env.JWT_SECRET,
+  JWT_SECRET,
+  'chocodor-super-secret-token-key-2026',
+  'chocodor_super_secret_jwt_key_2026_luxury_indulgence',
+].filter(Boolean)
+
+export function verifyCustomerToken(token) {
+  let lastErr = null
+  for (const secret of [...new Set(CUSTOMER_JWT_SECRETS)]) {
+    try {
+      return jwt.verify(token, secret)
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr || new Error('Invalid or expired session')
+}
+
 export function authMiddleware(req, res, next) {
   const header = req.headers.authorization
   if (!header || !header.startsWith('Bearer ')) {
@@ -16,7 +35,7 @@ export function authMiddleware(req, res, next) {
 
   const token = header.split(' ')[1]
   try {
-    const decoded = jwt.verify(token, JWT_SECRET)
+    const decoded = verifyCustomerToken(token)
     req.user = decoded
     next()
   } catch {

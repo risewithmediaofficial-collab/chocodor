@@ -8,17 +8,61 @@ export function AdminAuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('chocodor_admin_token')
-    const saved = localStorage.getItem('chocodor_admin_user')
-    if (token && saved) {
+    const handleExpired = () => {
+      setAdmin(null)
+    }
+    window.addEventListener('chocodor:admin-session-expired', handleExpired)
+    return () => window.removeEventListener('chocodor:admin-session-expired', handleExpired)
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+
+    const initAuth = async () => {
+      const token = localStorage.getItem('chocodor_admin_token')
+      const saved = localStorage.getItem('chocodor_admin_user')
+
+      if (!token || !saved) {
+        if (mounted) {
+          setAdmin(null)
+          setLoading(false)
+        }
+        return
+      }
+
       try {
-        setAdmin(JSON.parse(saved))
+        const parsed = JSON.parse(saved)
+        if (mounted) setAdmin(parsed)
       } catch {
         localStorage.removeItem('chocodor_admin_token')
         localStorage.removeItem('chocodor_admin_user')
+        if (mounted) {
+          setAdmin(null)
+          setLoading(false)
+        }
+        return
+      }
+
+      // Proactively verify token validity against backend /api/admin/me
+      try {
+        const res = await apiRequest('/admin/me', { isAdmin: true })
+        if (mounted && res?.admin) {
+          setAdmin(res.admin)
+          localStorage.setItem('chocodor_admin_user', JSON.stringify(res.admin))
+        }
+      } catch {
+        // If expired or unauthorized, client.js already cleared tokens and triggered logout
+        if (mounted) setAdmin(null)
+      } finally {
+        if (mounted) setLoading(false)
       }
     }
-    setLoading(false)
+
+    initAuth()
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   const login = async (email, password) => {

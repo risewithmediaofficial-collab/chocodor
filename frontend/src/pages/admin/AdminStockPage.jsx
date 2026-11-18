@@ -65,6 +65,7 @@ function StockDialog({ title, note, maxWidth = '560px', onClose, children }) {
 export default function AdminStockPage() {
   const [data, setData] = useState({ categories: [], products: [], materials: [], categoryMaterials: [], movements: [] })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false)
   const [editingMaterial, setEditingMaterial] = useState(null)
   const [recipeDialogOpen, setRecipeDialogOpen] = useState(false)
@@ -85,21 +86,31 @@ export default function AdminStockPage() {
 
   const [adjustForms, setAdjustForms] = useState({})
   const [saving, setSaving] = useState(false)
-  const hasMaterials = data.materials.length > 0
-  const hasCategories = data.categories.length > 0
+  const hasMaterials = (data?.materials || []).length > 0
+  const hasCategories = (data?.categories || []).length > 0
 
   useBodyScrollLock(materialDialogOpen || recipeDialogOpen)
 
   const loadStock = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const stock = await apiRequest('/admin/stock', { isAdmin: true })
-      setData(stock)
-      if (stock.materials?.[0]?.id) {
-        setRecipeMaterialId((prev) => prev || stock.materials[0].id)
+      if (stock && typeof stock === 'object') {
+        setData({
+          categories: Array.isArray(stock.categories) ? stock.categories : [],
+          products: Array.isArray(stock.products) ? stock.products : [],
+          materials: Array.isArray(stock.materials) ? stock.materials : [],
+          categoryMaterials: Array.isArray(stock.categoryMaterials) ? stock.categoryMaterials : [],
+          movements: Array.isArray(stock.movements) ? stock.movements : [],
+        })
+        if (stock.materials?.[0]?.id) {
+          setRecipeMaterialId((prev) => prev || stock.materials[0].id)
+        }
       }
     } catch (err) {
-      alert(`Stock load failed: ${err.message}`)
+      console.error('Stock load failed:', err)
+      setError(err.message || 'Stock load failed')
     } finally {
       setLoading(false)
     }
@@ -110,8 +121,8 @@ export default function AdminStockPage() {
   }, [loadStock])
 
   const lowStock = useMemo(
-    () => data.materials.filter((m) => Number(m.current_stock || 0) <= Number(m.min_stock || 0)),
-    [data.materials]
+    () => (data?.materials || []).filter((m) => Number(m.current_stock || 0) <= Number(m.min_stock || 0)),
+    [data?.materials]
   )
 
   const openCreateMaterialDialog = () => {
@@ -351,6 +362,13 @@ export default function AdminStockPage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div style={{ background: '#FFF1F0', border: '1px solid #FFCCC7', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: '#CF1322', fontSize: '13px', fontWeight: 600 }}>⚠️ {error}</span>
+          <button type="button" className="btn btn--outline btn--sm" onClick={loadStock}>Retry</button>
+        </div>
+      )}
 
       {lowStock.length > 0 && (
         <div style={{ background: '#FDE8E8', color: '#BA1B1B', padding: '12px 16px', borderRadius: '12px', fontWeight: 800, fontSize: '13px' }}>

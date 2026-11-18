@@ -9,6 +9,7 @@ import DateRangeFilter from '../../components/admin/DateRangeFilter'
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [fromDate, setFromDate] = useState('')
@@ -24,6 +25,7 @@ export default function AdminOrdersPage() {
   const fetchOrders = useCallback(async (isBackground = false) => {
     try {
       if (!isBackground) setLoading(true)
+      setError(null)
       const params = new URLSearchParams()
       if (statusFilter) params.append('status', statusFilter)
       if (search) params.append('search', search)
@@ -59,10 +61,11 @@ export default function AdminOrdersPage() {
       setCountdown(30)
     } catch (err) {
       console.error('Failed to poll orders:', err)
+      if (!isBackground) setError(err.message || 'Failed to load orders')
     } finally {
       if (!isBackground) setLoading(false)
     }
-  }, [statusFilter, search])
+  }, [statusFilter, search, fromDate, toDate])
 
   // Initial load & filter change
   useEffect(() => {
@@ -145,6 +148,13 @@ export default function AdminOrdersPage() {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div style={{ background: '#FFF1F0', border: '1px solid #FFCCC7', borderRadius: '12px', padding: '12px 16px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#CF1322', fontSize: '13px', fontWeight: 600 }}>⚠️ {error}</span>
+            <button type="button" className="btn btn--outline btn--sm" onClick={() => fetchOrders(false)}>Retry</button>
+          </div>
+        )}
 
         {/* Date-to-Date Range Filter */}
         <DateRangeFilter

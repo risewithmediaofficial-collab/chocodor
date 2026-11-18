@@ -4,9 +4,21 @@ import { formatPrice } from '../../data/content'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
+const DEFAULT_OPERATIONS_DATA = {
+  tables: [],
+  materials: [],
+  shifts: [],
+  purchases: [],
+  wastage: [],
+  expenses: [],
+  feedback: [],
+  profit: {},
+}
+
 export default function AdminOperationsPage() {
-  const [data, setData] = useState(null)
+  const [data, setData] = useState(DEFAULT_OPERATIONS_DATA)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [tableForm, setTableForm] = useState({ name: '', capacity: 2, notes: '' })
   const [expenseForm, setExpenseForm] = useState({ date: today(), category: '', amount: '', paidBy: 'CASH', notes: '' })
   const [purchaseForm, setPurchaseForm] = useState({ materialId: '', vendor: '', invoiceNo: '', quantity: '', unitCost: '' })
@@ -14,20 +26,34 @@ export default function AdminOperationsPage() {
   const [shiftForm, setShiftForm] = useState({ staffName: '', openingCash: '' })
   const [closeShiftForm, setCloseShiftForm] = useState({ shiftId: '', cashSales: '', upiSales: '', cardSales: '', expenses: '', closingCash: '' })
   const [feedbackForm, setFeedbackForm] = useState({ customerName: '', mobile: '', rating: 5, feedback: '' })
+
   const materials = data?.materials || []
   const openShifts = (data?.shifts || []).filter((shift) => shift.status === 'OPEN')
 
   const load = async () => {
     try {
       setLoading(true)
+      setError(null)
       const res = await apiRequest('/admin/operations', { isAdmin: true })
-      setData(res)
-      const firstMaterial = res.materials?.[0]?.id || ''
-      setPurchaseForm((prev) => ({ ...prev, materialId: prev.materialId || firstMaterial }))
-      setWastageForm((prev) => ({ ...prev, materialId: prev.materialId || firstMaterial }))
-      setCloseShiftForm((prev) => ({ ...prev, shiftId: prev.shiftId || res.shifts?.find((s) => s.status === 'OPEN')?.id || '' }))
+      if (res) {
+        setData({
+          tables: Array.isArray(res.tables) ? res.tables : [],
+          materials: Array.isArray(res.materials) ? res.materials : [],
+          shifts: Array.isArray(res.shifts) ? res.shifts : [],
+          purchases: Array.isArray(res.purchases) ? res.purchases : [],
+          wastage: Array.isArray(res.wastage) ? res.wastage : [],
+          expenses: Array.isArray(res.expenses) ? res.expenses : [],
+          feedback: Array.isArray(res.feedback) ? res.feedback : [],
+          profit: res.profit || {},
+        })
+        const firstMaterial = res.materials?.[0]?.id || ''
+        setPurchaseForm((prev) => ({ ...prev, materialId: prev.materialId || firstMaterial }))
+        setWastageForm((prev) => ({ ...prev, materialId: prev.materialId || firstMaterial }))
+        setCloseShiftForm((prev) => ({ ...prev, shiftId: prev.shiftId || res.shifts?.find((s) => s.status === 'OPEN')?.id || '' }))
+      }
     } catch (err) {
-      alert(`Operations load failed: ${err.message}`)
+      console.error('Operations load failed:', err)
+      setError(err.message || 'Operations load failed')
     } finally {
       setLoading(false)
     }
@@ -81,6 +107,13 @@ export default function AdminOperationsPage() {
         </p>
       </div>
 
+      {error && (
+        <div style={{ background: '#FFF1F0', border: '1px solid #FFCCC7', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: '#CF1322', fontSize: '13px', fontWeight: 600 }}>⚠️ {error}</span>
+          <button type="button" className="btn btn--outline btn--sm" onClick={load}>Retry</button>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
         {[
           ['Today Revenue', formatPrice(profit.revenue || 0), '#2E6F40'],
@@ -111,7 +144,7 @@ export default function AdminOperationsPage() {
           <button className="btn btn--gold btn--sm" type="submit">Add Table</button>
         </form>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px', maxHeight: '300px', overflowY: 'auto', paddingRight: '4px' }}>
-          {(data.tables || []).map((table) => (
+          {(data?.tables || []).map((table) => (
             <div key={table.id} style={{ border: '1px solid rgba(61,37,30,0.1)', borderRadius: '12px', padding: '12px', background: table.status === 'EMPTY' ? '#FFFFFF' : '#FAF0E4' }}>
               <strong>{table.name}</strong>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{table.capacity} seats</div>
@@ -200,10 +233,10 @@ export default function AdminOperationsPage() {
           <table className="admin-table" style={{ margin: 0, minWidth: '760px' }}>
             <thead><tr><th>Type</th><th>Details</th><th>Amount/Qty</th><th>Time</th></tr></thead>
             <tbody>
-              {[...(data.purchases || []).map((p) => ({ type: 'Purchase', details: `${p.material?.name || p.material_id} from ${p.vendor || '-'}`, amount: `${p.quantity} ${p.material?.unit || ''} / ${formatPrice(p.total_cost || 0)}`, time: p.purchased_at })),
-                ...(data.wastage || []).map((w) => ({ type: 'Wastage', details: `${w.material?.name || w.material_id}: ${w.reason || '-'}`, amount: `${w.quantity} ${w.material?.unit || ''}`, time: w.wasted_at })),
-                ...(data.expenses || []).map((e) => ({ type: 'Expense', details: `${e.category} (${e.paid_by})`, amount: formatPrice(e.amount || 0), time: e.created_at })),
-                ...(data.feedback || []).map((f) => ({ type: 'Feedback', details: `${f.customer_name}: ${f.feedback || '-'}`, amount: `${f.rating} stars`, time: f.created_at })),
+              {[...(data?.purchases || []).map((p) => ({ type: 'Purchase', details: `${p.material?.name || p.material_id} from ${p.vendor || '-'}`, amount: `${p.quantity} ${p.material?.unit || ''} / ${formatPrice(p.total_cost || 0)}`, time: p.purchased_at })),
+                ...(data?.wastage || []).map((w) => ({ type: 'Wastage', details: `${w.material?.name || w.material_id}: ${w.reason || '-'}`, amount: `${w.quantity} ${w.material?.unit || ''}`, time: w.wasted_at })),
+                ...(data?.expenses || []).map((e) => ({ type: 'Expense', details: `${e.category} (${e.paid_by})`, amount: formatPrice(e.amount || 0), time: e.created_at })),
+                ...(data?.feedback || []).map((f) => ({ type: 'Feedback', details: `${f.customer_name}: ${f.feedback || '-'}`, amount: `${f.rating} stars`, time: f.created_at })),
               ].slice(0, 30).map((row, idx) => (
                 <tr key={`${row.type}-${idx}`}><td>{row.type}</td><td>{row.details}</td><td>{row.amount}</td><td>{new Date(row.time).toLocaleString()}</td></tr>
               ))}
